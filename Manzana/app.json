@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Manzana Collection",
+    "slug": "manzana-collection",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#D4587A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.manzana.collection"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.manzana.collection"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-image-picker",
+      "expo-font"
+    ],
+    "scheme": "manzana",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ]
+  }
+}

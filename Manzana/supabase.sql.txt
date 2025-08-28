@@ -1,0 +1,697 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Enable RLS (Row Level Security)
+ALTER DATABASE postgres SET row_security = on;
+
+-- ================================
+-- USERS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    full_name VARCHAR(255),
+    avatar_url TEXT,
+    user_type VARCHAR(20) NOT NULL CHECK (user_type IN ('consumer', 'reseller')),
+    phone VARCHAR(20),
+    address TEXT,
+    city VARCHAR(100),
+    state VARCHAR(100),
+    zip_code VARCHAR(20),
+    postal_code VARCHAR(20),
+    country VARCHAR(100) DEFAULT 'Mexico',
+    business_name VARCHAR(255), -- For resellers
+    tax_id VARCHAR(50), -- For resellers
+    push_token TEXT,
+    notification_preferences JSONB DEFAULT '{
+        "push_promotions": true,
+        "push_stock_alerts": true,
+        "push_new_products": true,
+        "email_promotions": true,
+        "email_stock_alerts": true
+    }',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- CATEGORIES TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    image_url TEXT,
+    parent_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    sort_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- PRODUCTS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.products (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    discounted_price DECIMAL(10,2),
+    sku VARCHAR(100) UNIQUE NOT NULL,
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    stock_quantity INTEGER DEFAULT 0,
+    min_stock_level INTEGER DEFAULT 5,
+    is_active BOOLEAN DEFAULT true,
+    is_featured BOOLEAN DEFAULT false,
+    tags TEXT[] DEFAULT '{}',
+    brand VARCHAR(100),
+    material VARCHAR(255),
+    care_instructions TEXT,
+    weight DECIMAL(8,2),
+    dimensions JSONB, -- {length, width, height}
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- PRODUCT IMAGES TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.product_images (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    alt_text VARCHAR(255),
+    sort_order INTEGER DEFAULT 0,
+    is_primary BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- PRODUCT VARIANTS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.product_variants (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL, -- e.g., "Size S", "Color Red"
+    type VARCHAR(50) NOT NULL CHECK (type IN ('size', 'color', 'style')),
+    value VARCHAR(100) NOT NULL, -- e.g., "S", "Red", "V-neck"
+    stock_quantity INTEGER DEFAULT 0,
+    price_adjustment DECIMAL(10,2) DEFAULT 0,
+    sku_suffix VARCHAR(50),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- PROMOTIONS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.promotions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    image_url TEXT,
+    promotion_type VARCHAR(50) NOT NULL CHECK (promotion_type IN ('percentage', 'fixed_amount', 'buy_x_get_y', 'free_shipping')),
+    discount_value DECIMAL(10,2) NOT NULL,
+    buy_quantity INTEGER,
+    get_quantity INTEGER,
+    terms_and_conditions TEXT,
+    min_purchase_amount DECIMAL(10,2),
+    applicable_to VARCHAR(50) DEFAULT 'all' CHECK (applicable_to IN ('all', 'category', 'product', 'user_type')),
+    applicable_ids TEXT[] DEFAULT '{}',
+    user_type_restriction VARCHAR(20) CHECK (user_type_restriction IN ('consumer', 'reseller')),
+    code VARCHAR(50), -- Promo code if required
+    start_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    usage_limit INTEGER,
+    usage_count INTEGER DEFAULT 0,
+    is_featured BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- NOTIFICATIONS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('promotion', 'stock_alert', 'order', 'system', 'product')),
+    data JSONB, -- Additional data payload
+    image_url TEXT,
+    action_url TEXT, -- Deep link or navigation path
+    is_read BOOLEAN DEFAULT false,
+    is_sent BOOLEAN DEFAULT false,
+    sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- STOCK ALERTS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.stock_alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    product_variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+    threshold_quantity INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT true,
+    last_triggered_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, product_id, product_variant_id)
+);
+
+-- ================================
+-- WISHLIST TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.wishlist (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    product_variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, product_id, product_variant_id)
+);
+
+-- ================================
+-- SHOPPING CART TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.cart (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    product_variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, product_id, product_variant_id)
+);
+
+-- ================================
+-- ORDERS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')),
+    subtotal DECIMAL(10,2) NOT NULL,
+    tax_amount DECIMAL(10,2) DEFAULT 0,
+    shipping_amount DECIMAL(10,2) DEFAULT 0,
+    discount_amount DECIMAL(10,2) DEFAULT 0,
+    total_amount DECIMAL(10,2) NOT NULL,
+    promotion_code VARCHAR(50),
+    shipping_address JSONB NOT NULL,
+    billing_address JSONB NOT NULL,
+    payment_status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'failed', 'refunded')),
+    payment_method VARCHAR(100),
+    payment_id VARCHAR(255),
+    notes TEXT,
+    tracking_number VARCHAR(100),
+    shipped_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- ORDER ITEMS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.order_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    product_variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(10,2) NOT NULL,
+    total_price DECIMAL(10,2) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ================================
+-- REVIEWS TABLE
+-- ================================
+CREATE TABLE IF NOT EXISTS public.reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    order_item_id UUID REFERENCES order_items(id) ON DELETE SET NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    title VARCHAR(255),
+    comment TEXT,
+    images TEXT[] DEFAULT '{}',
+    is_verified BOOLEAN DEFAULT false,
+    is_approved BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, product_id, order_item_id)
+);
+
+-- ================================
+-- INDEXES FOR PERFORMANCE
+-- ================================
+
+-- Users
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type);
+CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);
+
+-- Categories
+CREATE INDEX IF NOT EXISTS idx_categories_parent_id ON categories(parent_id);
+CREATE INDEX IF NOT EXISTS idx_categories_is_active ON categories(is_active);
+CREATE INDEX IF NOT EXISTS idx_categories_sort_order ON categories(sort_order);
+
+-- Products
+CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
+CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active);
+CREATE INDEX IF NOT EXISTS idx_products_is_featured ON products(is_featured);
+CREATE INDEX IF NOT EXISTS idx_products_price ON products(price);
+CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
+CREATE INDEX IF NOT EXISTS idx_products_stock_quantity ON products(stock_quantity);
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
+
+-- Product Images
+CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_images_is_primary ON product_images(is_primary);
+
+-- Product Variants
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_id ON product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_type ON product_variants(type);
+
+-- Promotions
+CREATE INDEX IF NOT EXISTS idx_promotions_start_date ON promotions(start_date);
+CREATE INDEX IF NOT EXISTS idx_promotions_end_date ON promotions(end_date);
+CREATE INDEX IF NOT EXISTS idx_promotions_is_active ON promotions(is_active);
+CREATE INDEX IF NOT EXISTS idx_promotions_is_featured ON promotions(is_featured);
+CREATE INDEX IF NOT EXISTS idx_promotions_promotion_type ON promotions(promotion_type);
+
+-- Notifications
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+
+-- Stock Alerts
+CREATE INDEX IF NOT EXISTS idx_stock_alerts_user_id ON stock_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_stock_alerts_product_id ON stock_alerts(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_alerts_is_active ON stock_alerts(is_active);
+
+-- Wishlist
+CREATE INDEX IF NOT EXISTS idx_wishlist_user_id ON wishlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_wishlist_product_id ON wishlist(product_id);
+
+-- Cart
+CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id);
+
+-- Orders
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);
+
+-- Order Items
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+
+-- Reviews
+CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_rating ON reviews(rating);
+CREATE INDEX IF NOT EXISTS idx_reviews_is_approved ON reviews(is_approved);
+
+-- ================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ================================
+
+-- Enable RLS on all tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE promotions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+
+-- Users policies
+CREATE POLICY "Users can view own profile" ON users
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON users
+    FOR UPDATE USING (auth.uid() = id);
+
+-- Categories policies (public read)
+CREATE POLICY "Categories are viewable by everyone" ON categories
+    FOR SELECT USING (is_active = true);
+
+-- Products policies (public read)
+CREATE POLICY "Products are viewable by everyone" ON products
+    FOR SELECT USING (is_active = true);
+
+-- Product images policies (public read)
+CREATE POLICY "Product images are viewable by everyone" ON product_images
+    FOR SELECT USING (true);
+
+-- Product variants policies (public read)
+CREATE POLICY "Product variants are viewable by everyone" ON product_variants
+    FOR SELECT USING (is_active = true);
+
+-- Promotions policies (public read)
+CREATE POLICY "Active promotions are viewable by everyone" ON promotions
+    FOR SELECT USING (is_active = true AND start_date <= NOW() AND end_date >= NOW());
+
+-- Notifications policies
+CREATE POLICY "Users can view own notifications" ON notifications
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own notifications" ON notifications
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own notifications" ON notifications
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Stock alerts policies
+CREATE POLICY "Users can manage own stock alerts" ON stock_alerts
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Wishlist policies
+CREATE POLICY "Users can manage own wishlist" ON wishlist
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Cart policies
+CREATE POLICY "Users can manage own cart" ON cart
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Orders policies
+CREATE POLICY "Users can view own orders" ON orders
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create own orders" ON orders
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Order items policies
+CREATE POLICY "Users can view own order items" ON order_items
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM orders 
+            WHERE orders.id = order_items.order_id 
+            AND orders.user_id = auth.uid()
+        )
+    );
+
+-- Reviews policies
+CREATE POLICY "Users can manage own reviews" ON reviews
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Approved reviews are viewable by everyone" ON reviews
+    FOR SELECT USING (is_approved = true);
+
+-- ================================
+-- FUNCTIONS AND TRIGGERS
+-- ================================
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language plpgsql;
+
+-- Add updated_at triggers
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_categories_updated_at ON categories;
+CREATE TRIGGER update_categories_updated_at BEFORE UPDATE ON categories
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_products_updated_at ON products;
+CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_product_variants_updated_at ON product_variants;
+CREATE TRIGGER update_product_variants_updated_at BEFORE UPDATE ON product_variants
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_promotions_updated_at ON promotions;
+CREATE TRIGGER update_promotions_updated_at BEFORE UPDATE ON promotions
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_notifications_updated_at ON notifications;
+CREATE TRIGGER update_notifications_updated_at BEFORE UPDATE ON notifications
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_stock_alerts_updated_at ON stock_alerts;
+CREATE TRIGGER update_stock_alerts_updated_at BEFORE UPDATE ON stock_alerts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_cart_updated_at ON cart;
+CREATE TRIGGER update_cart_updated_at BEFORE UPDATE ON cart
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
+CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_reviews_updated_at ON reviews;
+CREATE TRIGGER update_reviews_updated_at BEFORE UPDATE ON reviews
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Function to generate order number
+CREATE OR REPLACE FUNCTION generate_order_number()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.order_number = 'MZ-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' || LPAD(nextval('order_sequence')::text, 6, '0');
+    RETURN NEW;
+END;
+$$ language plpgsql;
+
+-- Create sequence for order numbers
+CREATE SEQUENCE IF NOT EXISTS order_sequence START 1;
+
+-- Add order number trigger
+DROP TRIGGER IF EXISTS generate_order_number_trigger ON orders;
+CREATE TRIGGER generate_order_number_trigger BEFORE INSERT ON orders
+    FOR EACH ROW EXECUTE FUNCTION generate_order_number();
+
+-- Function to check and create stock alerts
+CREATE OR REPLACE FUNCTION check_stock_alerts()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if stock quantity dropped below threshold for any active alerts
+    INSERT INTO notifications (user_id, title, message, type, data, created_at)
+    SELECT 
+        sa.user_id,
+        'Stock Alert: ' || p.name,
+        'The product "' || p.name || '" is now back in stock!',
+        'stock_alert',
+        jsonb_build_object(
+            'product_id', p.id,
+            'product_name', p.name,
+            'stock_quantity', NEW.stock_quantity
+        ),
+        NOW()
+    FROM stock_alerts sa
+    JOIN products p ON sa.product_id = p.id
+    WHERE sa.product_id = NEW.id 
+        AND sa.is_active = true
+        AND OLD.stock_quantity <= sa.threshold_quantity
+        AND NEW.stock_quantity > sa.threshold_quantity;
+
+    RETURN NEW;
+END;
+$$ language plpgsql;
+
+-- Add stock alert trigger
+DROP TRIGGER IF EXISTS check_stock_alerts_trigger ON products;
+CREATE TRIGGER check_stock_alerts_trigger AFTER UPDATE OF stock_quantity ON products
+    FOR EACH ROW EXECUTE FUNCTION check_stock_alerts();
+
+-- ================================
+-- SAMPLE DATA
+-- ================================
+
+-- Insert sample categories
+INSERT INTO categories (name, description, image_url, sort_order) VALUES
+('Vestidos', 'Hermosos vestidos para toda ocasión', 'https://picsum.photos/400/300?random=1', 1),
+('Blusas', 'Blusas elegantes y casuales', 'https://picsum.photos/400/300?random=2', 2),
+('Pantalones', 'Pantalones cómodos y con estilo', 'https://picsum.photos/400/300?random=3', 3),
+('Accesorios', 'Accesorios perfectos para completar tu look', 'https://picsum.photos/400/300?random=4', 4),
+('Zapatos', 'Calzado para todas las ocasiones', 'https://picsum.photos/400/300?random=5', 5)
+ON CONFLICT DO NOTHING;
+
+-- Insert sample products
+WITH dress_category AS (
+    SELECT id FROM categories WHERE name = 'Vestidos' LIMIT 1
+),
+top_category AS (
+    SELECT id FROM categories WHERE name = 'Blusas' LIMIT 1
+)
+INSERT INTO products (name, description, price, discounted_price, sku, category_id, stock_quantity, is_featured, tags, brand) 
+SELECT 
+    'Vestido Elegante de Verano',
+    'Un hermoso vestido cómodo perfecto para ocasiones de verano',
+    89.99,
+    69.99,
+    'DRESS-001',
+    dc.id,
+    15,
+    true,
+    ARRAY['verano', 'elegante', 'vestido'],
+    'Manzana'
+FROM dress_category dc
+UNION ALL
+SELECT 
+    'Blusa de Algodón Casual',
+    'Blusa cómoda de algodón para uso diario',
+    34.99,
+    NULL,
+    'TOP-001',
+    tc.id,
+    25,
+    true,
+    ARRAY['casual', 'algodón', 'blusa'],
+    'Manzana'
+FROM top_category tc
+ON CONFLICT (sku) DO NOTHING;
+
+-- Insert product images
+WITH product_data AS (
+    SELECT id, name FROM products WHERE sku IN ('DRESS-001', 'TOP-001')
+)
+INSERT INTO product_images (product_id, url, alt_text, is_primary, sort_order)
+SELECT 
+    pd.id,
+    'https://picsum.photos/300/400?random=' || (ROW_NUMBER() OVER() + 20),
+    pd.name || ' - Imagen principal',
+    true,
+    1
+FROM product_data pd
+ON CONFLICT DO NOTHING;
+
+-- Insert sample promotions
+INSERT INTO promotions (title, description, image_url, promotion_type, discount_value, start_date, end_date, is_featured, is_active) VALUES
+('Venta de Verano', 'Hasta 50% de descuento en toda la colección de verano', 'https://picsum.photos/600/300?random=10', 'percentage', 50, NOW(), NOW() + INTERVAL '30 days', true, true),
+('Nuevas Llegadas', '20% de descuento en nuevas llegadas esta semana', 'https://picsum.photos/600/300?random=11', 'percentage', 20, NOW(), NOW() + INTERVAL '7 days', true, true)
+ON CONFLICT DO NOTHING;
+
+-- ================================
+-- ADMIN/WEB WRITE POLICIES (DEV DEFAULT)
+-- Grant INSERT/UPDATE/DELETE to authenticated users for admin UI.
+-- For production, replace with domain/email restricted policies if needed.
+-- ================================
+
+-- Products (writes for authenticated)
+DROP POLICY IF EXISTS admin_insert_products ON products;
+CREATE POLICY admin_insert_products ON products
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS admin_update_products ON products;
+CREATE POLICY admin_update_products ON products
+  FOR UPDATE TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_delete_products ON products;
+CREATE POLICY admin_delete_products ON products
+  FOR DELETE TO authenticated
+  USING (true);
+
+-- Product images (writes for authenticated)
+DROP POLICY IF EXISTS admin_insert_product_images ON product_images;
+CREATE POLICY admin_insert_product_images ON product_images
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS admin_delete_product_images ON product_images;
+CREATE POLICY admin_delete_product_images ON product_images
+  FOR DELETE TO authenticated
+  USING (true);
+
+-- Promotions (writes for authenticated)
+DROP POLICY IF EXISTS admin_insert_promotions ON promotions;
+CREATE POLICY admin_insert_promotions ON promotions
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS admin_update_promotions ON promotions;
+CREATE POLICY admin_update_promotions ON promotions
+  FOR UPDATE TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_delete_promotions ON promotions;
+CREATE POLICY admin_delete_promotions ON promotions
+  FOR DELETE TO authenticated
+  USING (true);
+
+-- ================================
+-- STORAGE: Buckets and Policies for images
+-- Buckets: product-images, promotion-images (public)
+-- ================================
+
+-- Create buckets if not exist (public=true)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'product-images') THEN
+    INSERT INTO storage.buckets (id, name, public) VALUES ('product-images', 'product-images', true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'promotion-images') THEN
+    INSERT INTO storage.buckets (id, name, public) VALUES ('promotion-images', 'promotion-images', true);
+  END IF;
+END $$;
+
+-- Storage RLS is enabled by default on storage.objects
+-- Allow public read for these two buckets
+DROP POLICY IF EXISTS public_read_product_images ON storage.objects;
+CREATE POLICY public_read_product_images ON storage.objects
+  FOR SELECT USING (bucket_id = 'product-images');
+
+DROP POLICY IF EXISTS public_read_promotion_images ON storage.objects;
+CREATE POLICY public_read_promotion_images ON storage.objects
+  FOR SELECT USING (bucket_id = 'promotion-images');
+
+-- Allow authenticated users to upload/update/delete in these buckets
+DROP POLICY IF EXISTS admin_write_product_images ON storage.objects;
+CREATE POLICY admin_write_product_images ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'product-images');
+
+DROP POLICY IF EXISTS admin_update_product_images ON storage.objects;
+CREATE POLICY admin_update_product_images ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'product-images');
+
+DROP POLICY IF EXISTS admin_delete_product_images_storage ON storage.objects;
+CREATE POLICY admin_delete_product_images_storage ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'product-images');
+
+DROP POLICY IF EXISTS admin_write_promotion_images ON storage.objects;
+CREATE POLICY admin_write_promotion_images ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'promotion-images');
+
+DROP POLICY IF EXISTS admin_update_promotion_images ON storage.objects;
+CREATE POLICY admin_update_promotion_images ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'promotion-images');
+
+DROP POLICY IF EXISTS admin_delete_promotion_images_storage ON storage.objects;
+CREATE POLICY admin_delete_promotion_images_storage ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'promotion-images');
