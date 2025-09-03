@@ -60,7 +60,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Discount Badge */}
         {hasDiscount && (
           <View style={styles.discountBadge}>
-            <Text style={styles.discountText}>-{discountPercentage}%</Text>
+            <Text style={styles.discountText}>-{String(discountPercentage)}%</Text>
           </View>
         )}
 
@@ -93,7 +93,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {product.stock_quantity <= 5 && product.stock_quantity > 0 && (
           <View style={styles.lowStockIndicator}>
             <Text style={styles.lowStockText}>
-              Only {product.stock_quantity} available!
+              Only {String(product.stock_quantity)} available!
             </Text>
           </View>
         )}

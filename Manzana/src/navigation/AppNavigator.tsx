@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../hooks/useAuth";
 import { COLORS, TYPOGRAPHY } from "../constants/theme";
+import LoadingState from "../components/LoadingState";
 
 // Auth Screens
 import LoginScreen from "../screens/auth/LoginScreen";
@@ -282,7 +283,18 @@ function RootNavigator() {
     if (!hasCheckedFirstTime) {
       checkFirstTime();
     }
-  }, [hasCheckedFirstTime]);
+
+    // Timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (loading && !hasCheckedFirstTime) {
+        console.log("⏰ Timeout reached, forcing loading to false");
+        setHasCheckedFirstTime(true);
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [hasCheckedFirstTime, loading]);
 
   useEffect(() => {
     if (!loading && session && user) {
@@ -298,7 +310,7 @@ function RootNavigator() {
   }, [user, loading, session]);
 
   if (loading || !hasCheckedFirstTime) {
-    return null; // Show splash screen or loading indicator
+    return <LoadingState loading={true} />;
   }
 
   return (

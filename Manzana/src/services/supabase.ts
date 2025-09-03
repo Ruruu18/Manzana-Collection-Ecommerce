@@ -13,34 +13,98 @@ const hasValidCredentials =
   supabaseAnonKey.trim() !== "" &&
   supabaseUrl.includes("supabase.co");
 
+console.log("🔍 Supabase credentials check:", {
+  hasUrl: !!supabaseUrl,
+  hasKey: !!supabaseAnonKey,
+  urlValid: supabaseUrl?.includes("supabase.co"),
+  hasValidCredentials
+});
+
 
 
 let supabaseClient: any = null;
 
 if (hasValidCredentials) {
-
   try {
+    console.log("✅ Creating real Supabase client...");
     supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // Fix for React Native networking issues
+        flowType: 'pkce',
       },
       global: {
-        headers: { 'x-client-info': 'manzana-mobile' },
+        headers: { 
+          'x-client-info': 'manzana-mobile',
+          'apikey': supabaseAnonKey,
+        },
+        fetch: (url, options = {}) => {
+          const urlString = typeof url === 'string' ? url : url.toString();
+          console.log('🔄 Supabase fetch:', urlString);
+          
+          // For REST API endpoints (/rest/v1/), add proper headers including Content-Type
+          if (urlString.includes('/rest/v1/')) {
+            return fetch(url, {
+              ...options,
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'apikey': supabaseAnonKey,
+                ...options.headers,
+              },
+            }).then(response => {
+              // Check for API key related errors
+              if (!response.ok) {
+                if (response.status === 401) {
+                  console.error('❌ Supabase API: Unauthorized - Check API key');
+                } else if (response.status === 403) {
+                  console.error('❌ Supabase API: Forbidden - Check permissions');
+                }
+              }
+              return response;
+            }).catch(error => {
+              console.error('❌ Supabase fetch error:', error.message);
+              throw error;
+            });
+          }
+          
+          // For auth endpoints and others, use default behavior
+          return fetch(url, options);
+        },
+      },
+      // Add realtime configuration to prevent connection issues
+      realtime: {
+        params: {
+          eventsPerSecond: 2,
+        },
       },
     });
 
-    // Test the connection
+    // Test the connection and handle refresh token errors
     supabaseClient.auth.getSession()
-      .then(() => { /* Connection successful */ })
-      .catch((error: any) => {
-        throw error;
+      .then(() => { 
+        console.log("✅ Supabase connection successful");
+      })
+      .catch(async (error: any) => {
+        console.error("❌ Supabase connection error:", error.message);
+        
+        // If it's a refresh token error, clear the session
+        if (error.message?.includes('Invalid Refresh Token') || 
+            error.message?.includes('Refresh Token Not Found')) {
+          console.log("🔄 Clearing invalid session from storage...");
+          try {
+            await supabaseClient.auth.signOut();
+          } catch (signOutError) {
+            console.error("❌ Error clearing invalid session:", signOutError);
+          }
+        }
       });
 
   } catch (error) {
-
+    console.error("❌ Failed to create Supabase client:", error);
     throw error; // Don't fall back to mock client in production
   }
 }
@@ -368,5 +432,84 @@ export const supabase = supabaseClient;
 
 // Export development mode flag for debugging
 export const isDevMode = !hasValidCredentials;
+
+// Helper function to handle common Supabase errors
+export const handleSupabaseError = (error: any) => {
+  if (!error) return null;
+  
+  console.error('🔍 Supabase error details:', error);
+  
+  // Handle specific error types
+  if (error.message) {
+    if (error.message.includes('No API key found')) {
+      return {
+        type: 'api_key_missing',
+        message: 'API key is missing. Please check your Supabase configuration.',
+        userMessage: 'Configuration error. Please contact support.'
+      };
+    }
+    
+    if (error.message.includes('invalid input syntax for type uuid')) {
+      return {
+        type: 'invalid_uuid',
+        message: 'Invalid user ID format detected.',
+        userMessage: 'Please sign out and sign back in to refresh your session.'
+      };
+    }
+    
+    if (error.message.includes('JWT expired') || error.message.includes('Invalid Refresh Token')) {
+      return {
+        type: 'session_expired',
+        message: 'User session has expired.',
+        userMessage: 'Your session has expired. Please sign in again.'
+      };
+    }
+    
+    if (error.message.includes('Invalid login credentials')) {
+      return {
+        type: 'invalid_credentials',
+        message: 'Invalid email or password.',
+        userMessage: 'Invalid email or password. Please try again.'
+      };
+    }
+  }
+  
+  // Handle HTTP status codes
+  if (error.status) {
+    switch (error.status) {
+      case 401:
+        return {
+          type: 'unauthorized',
+          message: 'Unauthorized access.',
+          userMessage: 'Authentication required. Please sign in.'
+        };
+      case 403:
+        return {
+          type: 'forbidden',
+          message: 'Access forbidden.',
+          userMessage: 'You do not have permission to perform this action.'
+        };
+      case 429:
+        return {
+          type: 'rate_limit',
+          message: 'Too many requests.',
+          userMessage: 'Too many requests. Please wait a moment and try again.'
+        };
+      case 500:
+        return {
+          type: 'server_error',
+          message: 'Internal server error.',
+          userMessage: 'Server error. Please try again later.'
+        };
+    }
+  }
+  
+  // Default error handling
+  return {
+    type: 'unknown',
+    message: error.message || 'An unknown error occurred.',
+    userMessage: 'Something went wrong. Please try again.'
+  };
+};
 
 

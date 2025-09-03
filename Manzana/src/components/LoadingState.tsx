@@ -34,7 +34,11 @@ const LoadingState: React.FC<LoadingStateProps> = ({
         <Text style={styles.errorMessage}>{error}</Text>
         <TouchableOpacity
           style={styles.retryButton}
-          onPress={() => window.location.reload()}
+          onPress={() => {
+            // For React Native, we can't use window.location.reload()
+            // This would need to be handled by the parent component
+            console.log("Retry pressed");
+          }}
         >
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>

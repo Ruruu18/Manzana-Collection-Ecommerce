@@ -459,3 +459,30 @@ export const getPrimaryImageUrl = (
   const primaryImage = getPrimaryImage(images);
   return primaryImage?.url || fallback || "";
 };
+
+// Clear corrupted authentication session
+export const clearCorruptedSession = async (): Promise<void> => {
+  try {
+    const AsyncStorage = await import("@react-native-async-storage/async-storage");
+    
+    // Clear all Supabase related keys
+    const keys = [
+      'supabase.auth.token',
+      'sb-auth-token',
+      'supabase.session',
+      'sb-session'
+    ];
+    
+    for (const key of keys) {
+      try {
+        await AsyncStorage.default.removeItem(key);
+      } catch (error) {
+        console.warn(`Failed to remove ${key}:`, error);
+      }
+    }
+    
+    console.log("✅ Cleared corrupted session from storage");
+  } catch (error) {
+    console.error("❌ Error clearing corrupted session:", error);
+  }
+};

@@ -181,7 +181,7 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         </Text>
         {unreadCount > 0 && (
           <View style={styles.unreadBadge}>
-            <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+            <Text style={styles.unreadBadgeText}>{String(unreadCount)}</Text>
           </View>
         )}
       </TouchableOpacity>

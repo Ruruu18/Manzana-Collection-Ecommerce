@@ -207,7 +207,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             {unreadCount > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>
-                  {unreadCount > 99 ? "99+" : unreadCount}
+                  {unreadCount > 99 ? "99+" : String(unreadCount)}
                 </Text>
               </View>
             )}
@@ -261,9 +261,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         <View style={styles.promotionBadge}>
           <Text style={styles.promotionBadgeText}>
             {item.promotion_type === "percentage"
-              ? `${item.discount_value}% OFF`
+              ? `${String(item.discount_value || 0)}% OFF`
               : item.promotion_type === "fixed_amount"
-                ? `$${item.discount_value} OFF`
+                ? `$${String(item.discount_value || 0)} OFF`
                 : item.promotion_type === "free_shipping"
                   ? "FREE SHIPPING"
                   : "SPECIAL OFFER"}
@@ -375,7 +375,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
         {item.stock_quantity <= 5 && (
           <Text style={styles.lowStockText}>
-            Only {item.stock_quantity} available!
+            Only {String(item.stock_quantity)} available!
           </Text>
         )}
       </View>

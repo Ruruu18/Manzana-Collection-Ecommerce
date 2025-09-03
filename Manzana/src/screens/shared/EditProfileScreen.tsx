@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "../../services/supabase";
+import { supabase, handleSupabaseError } from "../../services/supabase";
 import { useAuth } from "../../hooks/useAuth";
 import {
   COLORS,
@@ -41,7 +41,7 @@ interface EditProfileScreenProps {
 const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
   navigation,
 }) => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<ProfileForm>({
     full_name: "",
@@ -56,8 +56,21 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
   const [errors, setErrors] = useState<Partial<ProfileForm>>({});
 
   useEffect(() => {
+    console.log("🔍 EditProfileScreen - User data:", {
+      hasUser: !!user,
+      userId: user?.id,
+      fullName: user?.full_name,
+      email: user?.email,
+      userType: user?.user_type,
+      phone: user?.phone,
+      address: user?.address,
+      city: user?.city,
+      state: user?.state,
+      zipCode: user?.zip_code
+    });
+    
     if (user) {
-      setForm({
+      const newForm = {
         full_name: user.full_name || "",
         email: user.email || "",
         phone: user.phone || "",
@@ -66,7 +79,12 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
         state: user.state || "",
         postal_code: user.zip_code || "",
         user_type: user.user_type || "consumer",
-      });
+      };
+      
+      console.log("🔄 EditProfileScreen - Setting form data:", newForm);
+      setForm(newForm);
+    } else {
+      console.log("⚠️ EditProfileScreen - No user data available");
     }
   }, [user]);
 
@@ -94,11 +112,19 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
   const handleSave = async () => {
     if (!validateForm()) return;
 
+    // Check if user is authenticated and has valid ID
+    if (!user || !user.id) {
+      console.error("❌ No authenticated user or user ID found");
+      Alert.alert("Error", "You must be logged in to update your profile. Please sign in again.");
+      return;
+    }
+
     try {
       setLoading(true);
+      console.log("🔄 Updating profile for user ID:", user.id);
 
       const { error } = await supabase
-        .from("profiles")
+        .from("users")
         .update({
           full_name: form.full_name,
           phone: form.phone,
@@ -109,19 +135,30 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
           user_type: form.user_type,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", user?.id);
+        .eq("id", user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Database update error:", error);
+        throw error;
+      }
+
+      console.log("✅ Database profile updated successfully");
 
       // Update email separately if changed
-      if (form.email !== user?.email) {
+      if (form.email !== user.email) {
+        console.log("🔄 Updating email from", user.email, "to", form.email);
         const { error: emailError } = await supabase.auth.updateUser({
           email: form.email,
         });
 
-        if (emailError) throw emailError;
+        if (emailError) {
+          console.error("❌ Email update error:", emailError);
+          throw emailError;
+        }
+        console.log("✅ Email updated successfully");
       }
 
+      // Update local user state
       await updateProfile({
         full_name: form.full_name,
         phone: form.phone,
@@ -130,11 +167,17 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
         state: form.state,
         zip_code: form.postal_code,
       });
+      
+      console.log("✅ Profile update completed successfully");
       Alert.alert("Success", "Profile updated successfully");
       navigation.goBack();
     } catch (error: any) {
-      console.error("Error updating profile:", error);
-      Alert.alert("Error", error.message || "Could not update profile");
+      console.error("❌ Error updating profile:", error);
+      
+      const errorInfo = handleSupabaseError(error);
+      const errorMessage = errorInfo?.userMessage || "Failed to update profile. Please try again.";
+      
+      Alert.alert("Error", errorMessage);
     } finally {
       setLoading(false);
     }
@@ -260,6 +303,37 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
       </View>
     </View>
   );
+
+  // Show loading screen while authentication is in progress
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error screen if user is not authenticated
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="person-circle-outline" size={64} color={COLORS.textSecondary} />
+          <Text style={styles.errorTitle}>Authentication Required</Text>
+          <Text style={styles.errorMessage}>
+            You must be signed in to edit your profile.
+          </Text>
+          <Button
+            title="Go Back"
+            onPress={() => navigation.goBack()}
+            style={styles.errorButton}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -419,6 +493,39 @@ const styles = StyleSheet.create({
   },
   userTypeTextActive: {
     color: COLORS.white,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+  },
+  loadingText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+  },
+  errorTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text,
+    textAlign: "center",
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  errorMessage: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    marginBottom: SPACING.xl,
+  },
+  errorButton: {
+    minWidth: 120,
   },
 });
 

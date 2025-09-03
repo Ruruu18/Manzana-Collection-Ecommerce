@@ -51,15 +51,15 @@ const MenuItem: React.FC<MenuItemProps> = ({
         <Ionicons name={icon as any} size={20} color={iconColor} />
       </View>
       <View style={styles.menuTextContainer}>
-        <Text style={styles.menuTitle}>{title}</Text>
-        {subtitle && <Text style={styles.menuSubtitle}>{subtitle}</Text>}
+        <Text style={styles.menuTitle}>{String(title)}</Text>
+        {subtitle && <Text style={styles.menuSubtitle}>{String(subtitle)}</Text>}
       </View>
     </View>
 
     <View style={styles.menuItemRight}>
       {badge && badge > 0 && (
         <View style={styles.menuBadge}>
-          <Text style={styles.menuBadgeText}>{badge > 99 ? "99+" : badge}</Text>
+          <Text style={styles.menuBadgeText}>{badge > 99 ? "99+" : String(badge)}</Text>
         </View>
       )}
       {showArrow && (
@@ -76,6 +76,16 @@ const MenuItem: React.FC<MenuItemProps> = ({
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const { user, signOut } = useAuth();
   const { unreadCount } = useNotifications();
+
+  // Debug user data
+  console.log("🔍 ProfileScreen - User data:", {
+    hasUser: !!user,
+    userId: user?.id,
+    fullName: user?.full_name,
+    email: user?.email,
+    userType: user?.user_type,
+    rawUser: user
+  });
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -110,8 +120,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           </View>
 
           <View style={styles.userDetails}>
-            <Text style={styles.userName}>{user?.full_name || "User"}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={styles.userName}>
+              {user?.full_name || user?.email?.split('@')[0] || "User"}
+            </Text>
+            <Text style={styles.userEmail}>{user?.email || "Loading..."}</Text>
             {user?.user_type && (
               <View style={styles.userTypeBadge}>
                 <Ionicons
@@ -180,7 +192,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         title="Settings"
         subtitle="Notifications and preferences"
         onPress={() => navigation.navigate("Settings")}
-        badge={unreadCount}
+        badge={unreadCount > 0 ? unreadCount : undefined}
       />
 
       <MenuItem
@@ -253,7 +265,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         <MenuItem
           icon="business-outline"
           title="Business Information"
-          subtitle={user.business_name || "Set up business data"}
+          subtitle={user?.business_name || "Set up business data"}
           onPress={() => navigation.navigate("EditProfile")}
         />
 

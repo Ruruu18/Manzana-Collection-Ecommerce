@@ -30,7 +30,7 @@ export const useNotifications = (): UseNotificationsReturn => {
   }, [user]);
 
   const setupPushNotifications = async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     try {
       const { status: existingStatus } =
@@ -80,12 +80,10 @@ export const useNotifications = (): UseNotificationsReturn => {
   };
 
   const fetchNotifications = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     try {
       setLoading(true);
-
-
 
       const { data, error } = await supabase
         .from("notifications")
@@ -116,9 +114,7 @@ export const useNotifications = (): UseNotificationsReturn => {
   }, [user]);
 
   const subscribeToNotifications = useCallback(() => {
-    if (!user) return () => {};
-
-
+    if (!user?.id) return () => {};
 
     // Subscribe to real-time notifications
     const channel = supabase
@@ -132,7 +128,6 @@ export const useNotifications = (): UseNotificationsReturn => {
           filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
-
           const newNotification = payload.new as Notification;
           setNotifications((prev) => [newNotification, ...prev]);
           setUnreadCount((prev) => prev + 1);

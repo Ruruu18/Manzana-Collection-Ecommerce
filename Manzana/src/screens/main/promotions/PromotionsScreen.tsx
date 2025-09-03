@@ -77,7 +77,7 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({
         {timeLeft.days > 0 && (
           <>
             <View style={styles.timeUnit}>
-              <Text style={styles.timeNumber}>{timeLeft.days}</Text>
+              <Text style={styles.timeNumber}>{String(timeLeft.days)}</Text>
               <Text style={styles.timeLabel}>days</Text>
             </View>
             <Text style={styles.timeSeparator}>:</Text>
