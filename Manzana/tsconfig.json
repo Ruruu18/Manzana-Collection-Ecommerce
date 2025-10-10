@@ -10,7 +10,7 @@
     "noEmit": true,
     "incremental": true,
     "isolatedModules": true,
-    "moduleResolution": "node"
+    "moduleResolution": "bundler"
   },
   "include": [
     "**/*.ts",

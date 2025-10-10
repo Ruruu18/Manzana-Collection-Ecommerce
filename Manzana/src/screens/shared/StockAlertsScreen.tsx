@@ -131,20 +131,42 @@ const StockAlertsScreen: React.FC<StockAlertsScreenProps> = ({
     if (!user) return;
 
     try {
+      // Fetch inactive alerts as history
       const { data, error } = await supabase
-        .from("stock_alert_history")
+        .from("stock_alerts")
         .select(
           `
           *,
-          product:products(name, price)
+          product:products(
+            id,
+            name,
+            price,
+            stock_quantity,
+            images:product_images(url, alt_text, is_primary)
+          )
         `,
         )
         .eq("user_id", user.id)
+        .eq("is_active", false)
         .order("created_at", { ascending: false })
         .limit(50);
 
       if (error) throw error;
-      setAlertHistory(data || []);
+
+      // Transform to match StockAlertHistory interface
+      const transformedData = (data || []).map(alert => ({
+        id: alert.id,
+        product_id: alert.product_id,
+        alert_type: 'back_in_stock' as const,
+        message: `Stock alert for ${alert.product?.name || 'product'}`,
+        created_at: alert.created_at,
+        product: {
+          name: alert.product?.name || '',
+          price: alert.product?.price || 0,
+        }
+      }));
+
+      setAlertHistory(transformedData);
     } catch (error) {
       console.error("Error fetching alert history:", error);
     }
@@ -152,9 +174,7 @@ const StockAlertsScreen: React.FC<StockAlertsScreenProps> = ({
 
   const fetchRecentlyRestocked = async () => {
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
+      // Fetch products that are currently in stock
       const { data, error } = await supabase
         .from("products")
         .select(
@@ -165,8 +185,7 @@ const StockAlertsScreen: React.FC<StockAlertsScreenProps> = ({
         )
         .eq("is_active", true)
         .gt("stock_quantity", 0)
-        .gte("restocked_at", threeDaysAgo.toISOString())
-        .order("restocked_at", { ascending: false })
+        .order("updated_at", { ascending: false })
         .limit(20);
 
       if (error) throw error;
@@ -277,8 +296,9 @@ const StockAlertsScreen: React.FC<StockAlertsScreenProps> = ({
             styles.tabText,
             activeTab === "restocked" && styles.activeTabText,
           ]}
+          numberOfLines={1}
         >
-          Recently Restocked
+          Restocked
         </Text>
       </TouchableOpacity>
     </View>
@@ -390,6 +410,110 @@ const StockAlertsScreen: React.FC<StockAlertsScreenProps> = ({
             )}
           </View>
         )}
+
+        {activeTab === "history" && (
+          <View style={styles.tabContent}>
+            {alertHistory.length > 0 ? (
+              <FlatList
+                data={alertHistory}
+                renderItem={({ item }) => (
+                  <View style={styles.alertCard}>
+                    <Text style={styles.productName}>{item.product.name}</Text>
+                    <Text style={styles.productPrice}>
+                      {formatCurrency(item.product.price)}
+                    </Text>
+                    <Text style={styles.stockStatus}>{item.message}</Text>
+                  </View>
+                )}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => (
+                  <View style={{ height: SPACING.sm }} />
+                )}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="time-outline"
+                  size={64}
+                  color={COLORS.textSecondary}
+                />
+                <Text style={styles.emptyTitle}>No alert history</Text>
+                <Text style={styles.emptySubtitle}>
+                  Your past alerts will appear here
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === "restocked" && (
+          <View style={styles.tabContent}>
+            {recentlyRestocked.length > 0 ? (
+              <FlatList
+                data={recentlyRestocked}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.alertCard}
+                    onPress={() =>
+                      navigation.navigate("ProductDetails", {
+                        productId: item.id,
+                      })
+                    }
+                  >
+                    <View style={styles.alertContent}>
+                      {item.images && item.images.length > 0 ? (
+                        <Image
+                          source={{
+                            uri: optimizeImageUrl(item.images[0].url, 60, 60),
+                          }}
+                          style={styles.productImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.productImagePlaceholder}>
+                          <Ionicons
+                            name="image-outline"
+                            size={24}
+                            color={COLORS.textSecondary}
+                          />
+                        </View>
+                      )}
+                      <View style={styles.alertInfo}>
+                        <Text style={styles.productName} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.productPrice}>
+                          {formatCurrency(item.price)}
+                        </Text>
+                        <Text style={styles.stockStatus}>
+                          {item.stock_quantity} in stock
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => (
+                  <View style={{ height: SPACING.sm }} />
+                )}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="cube-outline"
+                  size={64}
+                  color={COLORS.textSecondary}
+                />
+                <Text style={styles.emptyTitle}>No restocked products</Text>
+                <Text style={styles.emptySubtitle}>
+                  Recently restocked products will appear here
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -430,10 +554,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.xs,
   },
   tab: {
     flex: 1,
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xs,
     alignItems: "center",
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
@@ -445,6 +571,7 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.bodySmall,
     color: COLORS.textSecondary,
     fontWeight: "500",
+    textAlign: "center",
   },
   activeTabText: {
     color: COLORS.primary,

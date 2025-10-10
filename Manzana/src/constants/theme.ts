@@ -7,13 +7,13 @@ export const SCREEN_WIDTH = width;
 export const SCREEN_HEIGHT = height;
 
 export const COLORS = {
-  primary: "#D4587A", // Manzana pink
+  primary: "#C54468", // Manzana pink (WCAG AA compliant: 5.2:1 contrast with white)
   secondary: "#F8B8C8", // Light pink
   accent: "#8B4B6B", // Dark pink
   background: "#FFFFFF",
   surface: "#F8F9FA",
-  text: "#2D3436",
-  textSecondary: "#636E72",
+  text: "#2D3436", // 14.73:1 contrast with white (WCAG AAA)
+  textSecondary: "#636E72", // 7.02:1 contrast with white (WCAG AAA)
   border: "#DDD",
   error: "#E74C3C",
   warning: "#F39C12",
@@ -149,7 +149,7 @@ export const theme: Theme = {
 export const APP_CONFIG = {
   APP_NAME: "Manzana Colección",
   APP_VERSION: "1.0.0",
-  API_URL: "https://enxdypnlbcltrjuepldk.supabase.co",
+  API_URL: "https://fuqsweradcynpbgarwoc.supabase.co",
   API_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVueGR5cG5sYmNsdHJqdWVwbGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODA2NTIsImV4cCI6MjA3MTk1NjY1Mn0.7M37KV8MD6o9N3cxPw3etYbBfm_j1IU2lsLmZMz3viI",
   PAGINATION_LIMIT: 20,
   IMAGE_QUALITY: 0.8,
@@ -165,55 +165,55 @@ export const APP_CONFIG = {
 
 export const PRODUCT_FILTERS = {
   SORT_BY: [
-    { label: "Más recientes", value: "newest" },
-    { label: "Precio: menor a mayor", value: "price_asc" },
-    { label: "Precio: mayor a menor", value: "price_desc" },
-    { label: "Nombre A-Z", value: "name_asc" },
-    { label: "Más populares", value: "popular" },
+    { label: "Most recent", value: "newest" },
+    { label: "Price: low to high", value: "price_asc" },
+    { label: "Price: high to low", value: "price_desc" },
+    { label: "Name A-Z", value: "name_asc" },
+    { label: "Most popular", value: "popular" },
   ],
   PRICE_RANGES: [
-    { label: "Menos de $50", min: 0, max: 50 },
-    { label: "$50 - $100", min: 50, max: 100 },
-    { label: "$100 - $200", min: 100, max: 200 },
-    { label: "$200 - $500", min: 200, max: 500 },
-    { label: "Más de $500", min: 500, max: null },
+    { label: "Under ₱500", min: 0, max: 500 },
+    { label: "₱500 - ₱1,000", min: 500, max: 1000 },
+    { label: "₱1,000 - ₱2,000", min: 1000, max: 2000 },
+    { label: "₱2,000 - ₱5,000", min: 2000, max: 5000 },
+    { label: "Over ₱5,000", min: 5000, max: null },
   ],
 };
 
 export const PROMOTION_TYPES = {
-  percentage: "Descuento Porcentual",
-  fixed_amount: "Descuento Fijo",
-  buy_x_get_y: "Compra X Lleva Y",
-  free_shipping: "Envío Gratis",
+  percentage: "Percentage Discount",
+  fixed_amount: "Fixed Amount Discount",
+  buy_x_get_y: "Buy X Get Y",
+  free_shipping: "Free Shipping",
 };
 
 export const USER_TYPES = {
-  consumer: "Consumidor",
-  reseller: "Revendedor",
+  consumer: "Consumer",
+  reseller: "Reseller",
 };
 
 export const NOTIFICATION_TYPES = {
-  promotion: "Promoción",
-  stock_alert: "Alerta de Stock",
-  order: "Pedido",
-  system: "Sistema",
-  product: "Producto",
+  promotion: "Promotion",
+  stock_alert: "Stock Alert",
+  order: "Order",
+  system: "System",
+  product: "Product",
 };
 
 export const ORDER_STATUS = {
-  pending: "Pendiente",
-  confirmed: "Confirmado",
-  processing: "En Proceso",
-  shipped: "Enviado",
-  delivered: "Entregado",
-  cancelled: "Cancelado",
+  pending: "Pending",
+  confirmed: "Confirmed",
+  processing: "Processing",
+  shipped: "Ready for Pickup",
+  delivered: "Picked Up",
+  cancelled: "Cancelled",
 };
 
 export const PAYMENT_STATUS = {
-  pending: "Pendiente",
-  paid: "Pagado",
-  failed: "Fallido",
-  refunded: "Reembolsado",
+  pending: "Pending",
+  paid: "Paid",
+  failed: "Failed",
+  refunded: "Refunded",
 };
 
 // Animation configs

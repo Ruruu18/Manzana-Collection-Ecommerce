@@ -1,31 +1,38 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { uploadImage, deleteImage, validateImageFile, STORAGE_BUCKETS } from "../../utils/imageUpload";
+import { getCategoryIcon } from "../../utils/categoryIcons";
+import "../../styles/dashboard-enhancement.css";
 
 interface Category {
   id: string;
   name: string;
   description: string | null;
   image_url: string | null;
+  parent_category_id: string | null;
+  level: number;
+  display_order: number;
   is_active: boolean;
   created_at: string;
   updated_at?: string;
+  parent_name?: string;
+  subcategories?: Category[];
 }
 
 export default function Categories() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [parentCategories, setParentCategories] = useState<Category[]>([]);
+  const [hierarchicalCategories, setHierarchicalCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    image_url: "",
+    parent_category_id: "",
+    level: 0,
+    display_order: 0,
     is_active: true,
   });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     loadCategories();
@@ -33,17 +40,43 @@ export default function Categories() {
 
   const loadCategories = async () => {
     try {
+      // Load all categories with parent info
       const { data, error } = await supabase
         .from("categories")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select(`
+          *,
+          parent:parent_category_id (
+            name
+          )
+        `)
+        .order("level", { ascending: true })
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true });
 
       if (error) {
         console.error("Error loading categories:", error);
         return;
       }
 
-      setCategories(data || []);
+      const allCategories = (data || []).map((cat: any) => ({
+        ...cat,
+        parent_name: cat.parent?.name || null,
+      }));
+
+      // Organize into hierarchical structure
+      const parents = allCategories.filter((cat: any) => cat.level === 0);
+      const children = allCategories.filter((cat: any) => cat.level === 1);
+
+      // Add subcategories to parents
+      const hierarchical = parents.map((parent: any) => ({
+        ...parent,
+        subcategories: children.filter(
+          (child: any) => child.parent_category_id === parent.id
+        ),
+      }));
+
+      setParentCategories(parents);
+      setHierarchicalCategories(hierarchical);
     } catch (error) {
       console.error("Failed to load categories:", error);
     } finally {
@@ -51,66 +84,12 @@ export default function Categories() {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const validation = validateImageFile(file);
-    if (!validation.valid) {
-      alert(validation.error);
-      return;
-    }
-
-    setSelectedFile(file);
-    
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setImagePreview(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleRemoveImage = async () => {
-    if (editingCategory?.image_url && formData.image_url) {
-      // Extract path from URL for deletion
-      const urlParts = formData.image_url.split('/');
-      const path = urlParts.slice(-2).join('/'); // Get folder/filename
-      
-      const { error } = await deleteImage(STORAGE_BUCKETS.CATEGORY_IMAGES, path);
-      if (error) {
-        console.error('Error deleting image:', error);
-      }
-    }
-    
-    setSelectedFile(null);
-    setImagePreview(null);
-    setFormData({ ...formData, image_url: "" });
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUploading(true);
-    
+
     try {
-      let imageUrl = formData.image_url;
-
-      // Handle image upload if a new file is selected
-      if (selectedFile) {
-        const uploadResult = await uploadImage(
-          selectedFile,
-          STORAGE_BUCKETS.CATEGORY_IMAGES,
-          "categories"
-        );
-
-        if (uploadResult.error) {
-          alert("Failed to upload image: " + uploadResult.error);
-          setUploading(false);
-          return;
-        }
-
-        imageUrl = uploadResult.url;
-      }
+      const parentId = formData.parent_category_id || null;
+      const level = parentId ? 1 : 0;
 
       if (editingCategory) {
         // Update existing category
@@ -119,7 +98,9 @@ export default function Categories() {
           .update({
             name: formData.name,
             description: formData.description || null,
-            image_url: imageUrl || null,
+            parent_category_id: parentId,
+            level: level,
+            display_order: formData.display_order || 0,
             is_active: formData.is_active,
             updated_at: new Date().toISOString(),
           })
@@ -128,7 +109,6 @@ export default function Categories() {
         if (error) {
           console.error("Error updating category:", error);
           alert("Failed to update category: " + error.message);
-          setUploading(false);
           return;
         }
       } else {
@@ -139,7 +119,9 @@ export default function Categories() {
             {
               name: formData.name,
               description: formData.description || null,
-              image_url: imageUrl || null,
+              parent_category_id: parentId,
+              level: level,
+              display_order: formData.display_order || 0,
               is_active: formData.is_active,
             },
           ]);
@@ -147,23 +129,25 @@ export default function Categories() {
         if (error) {
           console.error("Error creating category:", error);
           alert("Failed to create category: " + error.message);
-          setUploading(false);
           return;
         }
       }
 
       // Reset form and reload categories
-      setFormData({ name: "", description: "", image_url: "", is_active: true });
-      setSelectedFile(null);
-      setImagePreview(null);
+      setFormData({
+        name: "",
+        description: "",
+        parent_category_id: "",
+        level: 0,
+        display_order: 0,
+        is_active: true,
+      });
       setEditingCategory(null);
       setIsModalOpen(false);
       await loadCategories();
     } catch (error) {
       console.error("Failed to save category:", error);
       alert("Failed to save category. Please try again.");
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -172,11 +156,11 @@ export default function Categories() {
     setFormData({
       name: category.name,
       description: category.description || "",
-      image_url: category.image_url || "",
+      parent_category_id: category.parent_category_id || "",
+      level: category.level,
+      display_order: category.display_order,
       is_active: category.is_active,
     });
-    setSelectedFile(null);
-    setImagePreview(category.image_url);
     setIsModalOpen(true);
   };
 
@@ -226,9 +210,26 @@ export default function Categories() {
   const handleModalClose = () => {
     setIsModalOpen(false);
     setEditingCategory(null);
-    setFormData({ name: "", description: "", image_url: "", is_active: true });
-    setSelectedFile(null);
-    setImagePreview(null);
+    setFormData({
+      name: "",
+      description: "",
+      parent_category_id: "",
+      level: 0,
+      display_order: 0,
+      is_active: true,
+    });
+  };
+
+  const toggleCategoryExpanded = (categoryId: string) => {
+    setExpandedCategories((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
+      } else {
+        newSet.add(categoryId);
+      }
+      return newSet;
+    });
   };
 
   if (loading) {
@@ -247,130 +248,283 @@ export default function Categories() {
         <div>
           <h1 className="page-title">Categories</h1>
           <p className="page-subtitle">
-            Manage product categories and organization
+            Organize your products into categories and collections
           </p>
         </div>
         <button
           className="btn btn-primary"
           onClick={() => setIsModalOpen(true)}
         >
-          ➕ Add Category
+          <span style={{ marginRight: "8px" }}>+</span>
+          Add Category
         </button>
       </div>
 
-      {/* Categories Table */}
-      <div className="card">
-        <div className="table-container">
-                      <table className="table">
-              <thead>
-                <tr>
-                  <th>Image</th>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-                          <tbody>
-                {categories.map((category) => (
-                  <tr key={category.id}>
-                    <td>
-                      <div className="category-image">
-                        {category.image_url ? (
-                          <img
-                            src={category.image_url}
-                            alt={category.name}
-                            style={{
-                              width: "50px",
-                              height: "50px",
-                              objectFit: "cover",
-                              borderRadius: "var(--radius-sm)",
+      {/* Categories Grid */}
+      {hierarchicalCategories.length === 0 ? (
+        <div className="card" style={{ padding: "60px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: "64px", marginBottom: "16px" }}>📂</div>
+          <h3 style={{ marginBottom: "8px", color: "var(--text)" }}>No categories yet</h3>
+          <p style={{ color: "var(--muted)", marginBottom: "24px" }}>
+            Start by creating your first product category.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => setIsModalOpen(true)}
+          >
+            <span style={{ marginRight: "8px" }}>+</span>
+            Add Category
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          maxHeight: "calc(100vh - 250px)",
+          overflowY: "auto",
+          paddingRight: "4px"
+        }}>
+          <div style={{ display: "grid", gap: "16px" }}>
+            {hierarchicalCategories.map((parent) => {
+              const isExpanded = expandedCategories.has(parent.id);
+              const hasSubcategories = parent.subcategories && parent.subcategories.length > 0;
+
+              return (
+                <div
+                  key={parent.id}
+                  className="card"
+                  style={{
+                    padding: "0",
+                    overflow: "hidden",
+                    border: "1px solid #e5e7eb",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  {/* Parent Category */}
+                  <div
+                    style={{
+                      padding: "16px 20px",
+                      borderBottom: hasSubcategories && isExpanded ? "1px solid #f3f4f6" : "none",
+                      background: "linear-gradient(135deg, #fef1f6 0%, #f0f9ff 100%)",
+                    }}
+                  >
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  {/* Icon */}
+                  <div
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      background: "linear-gradient(135deg, #FF6B9D 0%, #C8E4FB 100%)",
+                      borderRadius: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "28px",
+                      flexShrink: 0,
+                      boxShadow: "0 4px 6px rgba(255, 107, 157, 0.2)",
+                    }}
+                  >
+                    {getCategoryIcon(parent.name)}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                      <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "600", color: "#1f2937" }}>
+                        {parent.name}
+                      </h3>
+                      <span
+                        className={`badge ${parent.is_active ? "success" : "danger"}`}
+                        onClick={() => handleToggleStatus(parent)}
+                        style={{
+                          cursor: "pointer",
+                          fontSize: "11px",
+                          padding: "3px 10px",
+                          fontWeight: "500",
+                        }}
+                      >
+                        {parent.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px", color: "#6b7280" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <span style={{ fontSize: "14px" }}>🗂️</span> Parent
+                      </span>
+                      {hasSubcategories && (
+                        <>
+                          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <span style={{ fontSize: "14px" }}>📦</span> {parent.subcategories!.length} {parent.subcategories!.length === 1 ? 'collection' : 'collections'}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleCategoryExpanded(parent.id);
                             }}
-                          />
-                        ) : (
-                          <div
                             style={{
-                              width: "50px",
-                              height: "50px",
-                              backgroundColor: "var(--border-light)",
-                              borderRadius: "var(--radius-sm)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              color: "var(--muted)",
-                              fontSize: "12px",
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              color: "#FF6B9D",
+                              fontWeight: "500",
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              transition: "background 0.15s",
                             }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 107, 157, 0.1)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                           >
-                            📂
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: "var(--font-weight-semibold)" }}>
-                        {category.name}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ color: "var(--muted)", fontSize: "14px" }}>
-                        {category.description || "No description"}
-                      </div>
-                    </td>
-                  <td>
+                            {isExpanded ? "▼ Hide" : "▶ Show"}
+                          </button>
+                        </>
+                      )}
+                      <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <span style={{ fontSize: "14px" }}>📅</span> {new Date(parent.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: "8px" }}>
                     <button
-                      className={`badge ${
-                        category.is_active ? "success" : "danger"
-                      }`}
-                      onClick={() => handleToggleStatus(category)}
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => handleEdit(parent)}
                       style={{
-                        cursor: "pointer",
-                        border: "none",
-                        background: "transparent",
+                        minWidth: "70px",
+                        fontSize: "13px",
+                        padding: "6px 12px",
                       }}
                     >
-                      {category.is_active ? "Active" : "Inactive"}
+                      ✏️ Edit
                     </button>
-                  </td>
-                  <td style={{ color: "var(--muted)", fontSize: "14px" }}>
-                    {new Date(category.created_at).toLocaleDateString()}
-                  </td>
-                  <td>
-                    <div className="action-buttons">
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleEdit(category)}
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(category.id)}
-                      >
-                        🗑️ Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleDelete(parent.id)}
+                      style={{
+                        minWidth: "80px",
+                        fontSize: "13px",
+                        padding: "6px 12px",
+                      }}
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-          {categories.length === 0 && (
-            <div className="empty-state">
-              <div className="empty-icon">📂</div>
-              <h3>No categories found</h3>
-              <p>Start by creating your first product category.</p>
-              <button
-                className="btn btn-primary"
-                onClick={() => setIsModalOpen(true)}
-              >
-                Add Category
-              </button>
+              {/* Subcategories */}
+              {hasSubcategories && isExpanded && (
+                <div style={{ padding: "12px 16px 16px 16px", background: "#fafafa" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                      gap: "10px",
+                    }}
+                  >
+                    {parent.subcategories!.map((sub) => (
+                      <div
+                        key={sub.id}
+                        style={{
+                          padding: "12px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "10px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          background: "white",
+                          transition: "all 0.15s ease",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)";
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                          e.currentTarget.style.borderColor = "#FF6B9D40";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.boxShadow = "none";
+                          e.currentTarget.style.transform = "translateY(0)";
+                          e.currentTarget.style.borderColor = "#e5e7eb";
+                        }}
+                      >
+                        {/* Sub Icon */}
+                        <div
+                          style={{
+                            width: "42px",
+                            height: "42px",
+                            background: "linear-gradient(135deg, #FFE5EF 0%, #E0F2FE 100%)",
+                            borderRadius: "8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "20px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {getCategoryIcon(sub.name)}
+                        </div>
+
+                        {/* Sub Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                            <h4
+                              style={{
+                                margin: 0,
+                                fontSize: "14px",
+                                fontWeight: "600",
+                                color: "#374151",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {sub.name}
+                            </h4>
+                            <span
+                              className={`badge ${sub.is_active ? "success" : "danger"}`}
+                              onClick={() => handleToggleStatus(sub)}
+                              style={{
+                                cursor: "pointer",
+                                fontSize: "9px",
+                                padding: "2px 6px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {sub.is_active ? "✓" : "✕"}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(sub);
+                              }}
+                              style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px" }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn btn-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(sub.id);
+                              }}
+                              style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px" }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          );
+        })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (
@@ -386,6 +540,27 @@ export default function Categories() {
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
                 <div className="form-group">
+                  <label htmlFor="parent_category_id">Category Type</label>
+                  <select
+                    id="parent_category_id"
+                    value={formData.parent_category_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, parent_category_id: e.target.value })
+                    }
+                  >
+                    <option value="">Parent Category (e.g., T-Shirts, Dress)</option>
+                    {parentCategories.map((parent) => (
+                      <option key={parent.id} value={parent.id}>
+                        Subcategory of: {parent.name}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: "var(--muted)", fontSize: "12px", marginTop: "4px", display: "block" }}>
+                    Leave empty for main categories, or select a parent for subcategories (e.g., Girl Collection, Men Collection)
+                  </small>
+                </div>
+
+                <div className="form-group">
                   <label htmlFor="name">Category Name*</label>
                   <input
                     type="text"
@@ -394,65 +569,9 @@ export default function Categories() {
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
                     }
-                    placeholder="Enter category name"
+                    placeholder={formData.parent_category_id ? "e.g., Girl Collection, Men Collection" : "e.g., T-Shirts, Dress, Shoes"}
                     required
                   />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="description">Description</label>
-                  <textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                    placeholder="Enter category description"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Category Image</label>
-                  {imagePreview && (
-                    <div className="image-preview">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        style={{
-                          width: "120px",
-                          height: "120px",
-                          objectFit: "cover",
-                          borderRadius: "var(--radius)",
-                          marginBottom: "var(--spacing-sm)",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm"
-                        onClick={handleRemoveImage}
-                        style={{ marginLeft: "var(--spacing-sm)" }}
-                      >
-                        🗑️ Remove
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    style={{
-                      width: "100%",
-                      padding: "12px var(--spacing)",
-                      border: "2px dashed var(--border)",
-                      borderRadius: "var(--radius)",
-                      background: "var(--surface-hover)",
-                      cursor: "pointer",
-                    }}
-                  />
-                  <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "var(--spacing-sm)" }}>
-                    Upload JPEG, PNG, or WebP images (max 5MB)
-                  </div>
                 </div>
 
                 <div className="form-group">
@@ -475,16 +594,14 @@ export default function Categories() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={handleModalClose}
-                  disabled={uploading}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn btn-primary"
-                  disabled={uploading}
                 >
-                  {uploading ? "Uploading..." : editingCategory ? "Update Category" : "Create Category"}
+                  {editingCategory ? "Update Category" : "Create Category"}
                 </button>
               </div>
             </form>

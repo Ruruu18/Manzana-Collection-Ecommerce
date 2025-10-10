@@ -1,20 +1,27 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ProductCardProps } from "../types";
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from "../constants/theme";
 import {
   formatCurrency,
-  optimizeImageUrl,
   calculateDiscountPercentage,
 } from "../utils";
+import { supabase } from "../services/supabase";
+import OptimizedImage from "./OptimizedImage";
 
 const ProductCard: React.FC<ProductCardProps> = ({
   product,
   onPress,
   showWishlist = true,
   showStockAlert = true,
+  userId,
+  refreshKey = 0,
 }) => {
+  const [hasStockAlert, setHasStockAlert] = useState(false);
+  const [isLoadingAlert, setIsLoadingAlert] = useState(false);
+  const [isInWishlist, setIsInWishlist] = useState(false);
+  const [isLoadingWishlist, setIsLoadingWishlist] = useState(false);
   const primaryImage =
     product.images?.find((img) => img.is_primary) || product.images?.[0];
   const hasDiscount =
@@ -23,32 +30,186 @@ const ProductCard: React.FC<ProductCardProps> = ({
     ? calculateDiscountPercentage(product.price, product.discounted_price!)
     : 0;
 
+  useEffect(() => {
+    if (userId && product.id) {
+      checkStockAlert();
+      checkWishlistStatus();
+    }
+  }, [userId, product.id, refreshKey]);
+
+  const checkStockAlert = async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("stock_alerts")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("product_id", product.id)
+        .eq("is_active", true)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 is "no rows returned" - not an error
+        console.error("Error checking stock alert:", error);
+      }
+
+      setHasStockAlert(!!data);
+    } catch (error) {
+      console.error("Error checking stock alert:", error);
+    }
+  };
+
+  const checkWishlistStatus = async () => {
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("wishlist")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("product_id", product.id)
+        .maybeSingle();
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Error checking wishlist:", error);
+      }
+
+      setIsInWishlist(!!data);
+    } catch (error) {
+      console.error("Error checking wishlist:", error);
+    }
+  };
+
   const handlePress = () => {
     onPress(product);
   };
 
-  const handleWishlistPress = (e: any) => {
+  const handleWishlistPress = async (e: any) => {
     e.stopPropagation();
-    // TODO: Implement wishlist toggle
+
+    if (!userId) {
+      Alert.alert("Sign In Required", "Please sign in to add items to your wishlist.");
+      return;
+    }
+
+    if (isLoadingWishlist) return;
+
+    setIsLoadingWishlist(true);
+
+    try {
+      if (isInWishlist) {
+        // Remove from wishlist
+        const { error } = await supabase
+          .from("wishlist")
+          .delete()
+          .eq("user_id", userId)
+          .eq("product_id", product.id);
+
+        if (error) throw error;
+
+        setIsInWishlist(false);
+      } else {
+        // Add to wishlist
+        const { error } = await supabase
+          .from("wishlist")
+          .insert({
+            user_id: userId,
+            product_id: product.id,
+          });
+
+        if (error) throw error;
+
+        setIsInWishlist(true);
+        Alert.alert("Added to Wishlist", `${product.name} has been added to your wishlist.`);
+      }
+    } catch (error) {
+      console.error("Error toggling wishlist:", error);
+      Alert.alert("Error", "Failed to update wishlist. Please try again.");
+    } finally {
+      setIsLoadingWishlist(false);
+    }
   };
 
-  const handleStockAlertPress = (e: any) => {
+  const handleStockAlertPress = async (e: any) => {
     e.stopPropagation();
-    // TODO: Implement stock alert toggle
+
+    if (!userId) {
+      Alert.alert("Sign In Required", "Please sign in to set stock alerts.");
+      return;
+    }
+
+    if (isLoadingAlert) return;
+
+    setIsLoadingAlert(true);
+
+    try {
+      if (hasStockAlert) {
+        // Remove alert
+        const { error } = await supabase
+          .from("stock_alerts")
+          .delete()
+          .eq("user_id", userId)
+          .eq("product_id", product.id);
+
+        if (error) throw error;
+
+        setHasStockAlert(false);
+        Alert.alert("Alert Removed", "You will no longer receive notifications for this product.");
+      } else {
+        // Add alert
+        const { error } = await supabase
+          .from("stock_alerts")
+          .insert({
+            user_id: userId,
+            product_id: product.id,
+            is_active: true,
+          });
+
+        if (error) throw error;
+
+        setHasStockAlert(true);
+        Alert.alert(
+          "Alert Set",
+          `You'll be notified when ${product.name} is back in stock.`
+        );
+      }
+    } catch (error) {
+      console.error("Error toggling stock alert:", error);
+      Alert.alert("Error", "Failed to update stock alert. Please try again.");
+    } finally {
+      setIsLoadingAlert(false);
+    }
   };
+
+  const finalPrice = hasDiscount ? product.discounted_price! : product.price;
+  const accessibilityLabel = `${product.name}, ${formatCurrency(finalPrice)}${hasDiscount ? `, ${discountPercentage}% off` : ''}${product.stock_quantity === 0 ? ', out of stock' : ''}`;
 
   return (
-    <TouchableOpacity style={styles.container} onPress={handlePress}>
+    <TouchableOpacity
+      style={styles.container}
+      onPress={handlePress}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Double tap to view product details"
+      accessibilityRole="button"
+    >
       {/* Product Image */}
       <View style={styles.imageContainer}>
         {primaryImage ? (
-          <Image
-            source={{ uri: optimizeImageUrl(primaryImage.url, 200, 200) }}
+          <OptimizedImage
+            uri={primaryImage.url}
+            width={200}
+            height={200}
+            contentFit="cover"
             style={styles.image}
-            resizeMode="cover"
+            cachePolicy="memory-disk"
           />
         ) : (
-          <View style={styles.imagePlaceholder}>
+          <View
+            style={styles.imagePlaceholder}
+            accessibilityLabel="No product image available"
+            accessibilityRole="image"
+          >
             <Ionicons
               name="image-outline"
               size={40}
@@ -68,22 +229,47 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <View style={styles.actionButtons}>
           {showWishlist && (
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[
+                styles.actionButton,
+                isInWishlist && styles.wishlistButtonActive,
+              ]}
               onPress={handleWishlistPress}
+              disabled={isLoadingWishlist}
+              accessibilityLabel={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+              accessibilityHint={
+                isInWishlist
+                  ? "Double tap to remove this item from your wishlist"
+                  : "Double tap to add this item to your wishlist"
+              }
+              accessibilityRole="button"
             >
-              <Ionicons name="heart-outline" size={18} color={COLORS.text} />
+              <Ionicons
+                name={isInWishlist ? "heart" : "heart-outline"}
+                size={18}
+                color={isInWishlist ? COLORS.white : COLORS.text}
+              />
             </TouchableOpacity>
           )}
 
           {showStockAlert && product.stock_quantity <= 5 && (
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[
+                styles.actionButton,
+                hasStockAlert && styles.actionButtonActive,
+              ]}
               onPress={handleStockAlertPress}
+              accessibilityLabel={hasStockAlert ? "Remove stock alert" : "Set stock alert"}
+              accessibilityHint={
+                hasStockAlert
+                  ? "Double tap to stop receiving stock notifications"
+                  : "Double tap to receive a notification when this item is back in stock"
+              }
+              accessibilityRole="button"
             >
               <Ionicons
-                name="notifications-outline"
+                name={hasStockAlert ? "notifications" : "notifications-outline"}
                 size={18}
-                color={COLORS.warning}
+                color={hasStockAlert ? COLORS.white : COLORS.warning}
               />
             </TouchableOpacity>
           )}
@@ -101,7 +287,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Out of Stock Overlay */}
         {product.stock_quantity === 0 && (
           <View style={styles.outOfStockOverlay}>
-            <Text style={styles.outOfStockText}>Agotado</Text>
+            <Text style={styles.outOfStockText}>Out of Stock</Text>
           </View>
         )}
       </View>
@@ -168,7 +354,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           ) : (
             <View style={styles.outOfStockIndicator}>
               <Ionicons name="close-circle" size={12} color={COLORS.error} />
-              <Text style={styles.outOfStockStatusText}>Agotado</Text>
+              <Text style={styles.outOfStockStatusText}>Out of Stock</Text>
             </View>
           )}
         </View>
@@ -243,6 +429,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  actionButtonActive: {
+    backgroundColor: COLORS.warning,
+  },
+  wishlistButtonActive: {
+    backgroundColor: COLORS.error,
   },
   lowStockIndicator: {
     position: "absolute",

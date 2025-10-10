@@ -9,8 +9,11 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../../hooks/useAuth";
 import { useNotifications } from "../../../hooks/useNotifications";
+import { cartService } from "../../../services/cart";
 import { Notification } from "../../../types";
 import {
   COLORS,
@@ -30,11 +33,11 @@ interface NotificationsScreenProps {
 const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   navigation,
 }) => {
+  const { user } = useAuth();
   const {
     notifications,
     unreadCount,
     loading,
-    markAsRead,
     markAllAsRead,
     deleteNotification,
     refreshNotifications,
@@ -42,11 +45,26 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
 
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTab, setSelectedTab] = useState<"all" | "unread">("all");
+  const [cartCount, setCartCount] = useState(0);
 
   const filteredNotifications =
     selectedTab === "unread"
       ? notifications.filter((n) => !n.is_read)
       : notifications;
+
+  // Refresh cart count and notifications when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCartCount();
+      refreshNotifications();
+    }, [user])
+  );
+
+  const loadCartCount = async () => {
+    if (!user?.id) return;
+    const { count } = await cartService.getCartCount(user.id);
+    setCartCount(count || 0);
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -55,26 +73,11 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   };
 
   const handleNotificationPress = async (notification: Notification) => {
-    if (!notification.is_read) {
-      await markAsRead(notification.id);
-    }
-
-    // Handle navigation based on notification type and action_url
-    if (notification.action_url) {
-      // Parse action URL and navigate accordingly
-      if (notification.action_url.includes("product/")) {
-        const productId = notification.action_url.split("product/")[1];
-        navigation.navigate("ProductDetails", { productId });
-      } else if (notification.action_url.includes("promotion/")) {
-        const promotionId = notification.action_url.split("promotion/")[1];
-        navigation.navigate("PromotionDetails", { promotionId });
-      }
-    } else {
-      // Default to notification details
-      navigation.navigate("NotificationDetails", {
-        notificationId: notification.id,
-      });
-    }
+    // Navigate to notification details screen
+    // The screen will automatically mark as read
+    navigation.navigate("NotificationDetails", {
+      notificationId: notification.id,
+    });
   };
 
   const handleMarkAllAsRead = () => {
@@ -140,14 +143,30 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     <View style={styles.header}>
       <Text style={styles.title}>Notifications</Text>
 
-      {unreadCount > 0 && (
+      <View style={styles.headerActions}>
         <TouchableOpacity
-          style={styles.markAllButton}
-          onPress={handleMarkAllAsRead}
+          style={styles.cartButton}
+          onPress={() => navigation.navigate("Cart")}
         >
-          <Text style={styles.markAllText}>Mark all as read</Text>
+          <Ionicons name="cart-outline" size={24} color={COLORS.text} />
+          {cartCount > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>
+                {cartCount > 99 ? "99+" : String(cartCount)}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
-      )}
+
+        {unreadCount > 0 && (
+          <TouchableOpacity
+            style={styles.markAllButton}
+            onPress={handleMarkAllAsRead}
+          >
+            <Text style={styles.markAllText}>Mark all</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
@@ -325,10 +344,44 @@ const styles = StyleSheet.create({
   title: {
     ...TYPOGRAPHY.h2,
     color: COLORS.text,
+    fontWeight: "bold",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  cartButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  cartBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  cartBadgeText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: "bold",
   },
   markAllButton: {
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
   },
   markAllText: {
     ...TYPOGRAPHY.bodySmall,

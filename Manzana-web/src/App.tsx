@@ -9,6 +9,8 @@ import Categories from "./pages/admin/Categories";
 import Promotions from "./pages/admin/Promotions";
 import Orders from "./pages/admin/Orders";
 import Customers from "./pages/admin/Customers";
+import StaffManagement from "./pages/admin/StaffManagement";
+import UserManagement from "./pages/admin/UserManagement";
 
 function App() {
   return (
@@ -25,6 +27,8 @@ function App() {
             <Route path="promotions" element={<Promotions />} />
             <Route path="orders" element={<Orders />} />
             <Route path="customers" element={<Customers />} />
+            <Route path="staff" element={<StaffManagement />} />
+            <Route path="users" element={<UserManagement />} />
           </Route>
         </Route>
 

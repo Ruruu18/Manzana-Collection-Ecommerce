@@ -5,10 +5,11 @@ export interface User {
   avatar_url?: string;
   user_type: "consumer" | "reseller";
   phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
+  address?: string; // Street address
+  region?: string; // Philippine region (e.g., NCR, REGION I)
+  state?: string; // Province (e.g., METRO MANILA, ILOCOS NORTE)
+  city?: string; // City/Municipality
+  barangay?: string; // Barangay
   postal_code?: string;
   business_name?: string; // For resellers
   tax_id?: string; // For resellers
@@ -28,11 +29,18 @@ export interface Category {
   name: string;
   description?: string;
   image_url?: string;
-  parent_id?: string;
+  parent_category_id?: string;
+  parent_id?: string; // Deprecated - use parent_category_id
+  level: number; // 0 = parent, 1 = subcategory
+  display_order: number;
   sort_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Related data
+  parent?: Category; // Parent category (for subcategories)
+  subcategories?: Category[]; // Child categories (for parent categories)
+  parent_name?: string; // For convenience in queries
 }
 
 export interface Product {
@@ -202,11 +210,13 @@ export interface OrderItem {
 export interface Address {
   full_name: string;
   phone: string;
-  address_line_1: string;
+  address_line_1: string; // Street address
   address_line_2?: string;
-  city: string;
-  state: string;
-  zip_code: string;
+  region?: string; // Philippine region
+  state: string; // Province
+  city: string; // City/Municipality
+  barangay?: string; // Barangay
+  postal_code: string;
   country: string;
 }
 
@@ -217,12 +227,16 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Onboarding: undefined;
   ProfileSetup: undefined;
+  Cart: undefined;
+  Checkout: undefined;
+  OrderHistory: undefined;
 };
 
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  ResetPassword: undefined;
 };
 
 export type MainTabParamList = {
@@ -239,8 +253,12 @@ export type HomeStackParamList = {
   HomeScreen: undefined;
   ProductDetails: { productId: string };
   CategoryProducts: { categoryId: string; categoryName: string };
+  Categories: undefined;
   Search: { query?: string; categoryId?: string };
   PromotionDetails: { promotionId: string };
+  Cart: undefined;
+  Checkout: undefined;
+  OrderConfirmation: { order: any };
 };
 
 export type CatalogStackParamList = {
@@ -249,17 +267,29 @@ export type CatalogStackParamList = {
     | undefined;
   ProductDetails: { productId: string };
   Search: { query?: string; categoryId?: string };
+  Cart: undefined;
+  Checkout: undefined;
+  OrderConfirmation: { order: any };
 };
 
 export type PromotionsStackParamList = {
   PromotionsScreen: undefined;
   PromotionDetails: { promotionId: string };
   ProductDetails: { productId: string };
+  Cart: undefined;
+  Checkout: undefined;
+  OrderConfirmation: { order: any };
 };
 
 export type NotificationsStackParamList = {
   NotificationsScreen: undefined;
   NotificationDetails: { notificationId: string };
+  OrderDetails: { orderId: string };
+  ProductDetails: { productId: string };
+  PromotionDetails: { promotionId: string };
+  Cart: undefined;
+  Checkout: undefined;
+  OrderConfirmation: { order: any };
 };
 
 export type ProfileStackParamList = {
@@ -268,7 +298,17 @@ export type ProfileStackParamList = {
   Wishlist: undefined;
   StockAlerts: undefined;
   OrderHistory: undefined;
+  OrderDetails: { orderId: string };
+  OrderTracking: { orderId: string };
+  ProductDetails: { productId: string };
   EditProfile: undefined;
+  HelpCenter: undefined;
+  Contact: undefined;
+  TermsAndConditions: undefined;
+  PrivacyPolicy: undefined;
+  Cart: undefined;
+  Checkout: undefined;
+  OrderConfirmation: { order: any };
 };
 
 // API Response Types
@@ -307,7 +347,7 @@ export interface ProfileSetupForm {
   address?: string;
   city?: string;
   state?: string;
-  zipCode?: string;
+  postalCode?: string;
   businessName?: string; // For resellers
   taxId?: string; // For resellers
 }
@@ -362,6 +402,9 @@ export interface LoadingStateProps {
   children: React.ReactNode;
   emptyMessage?: string;
   emptyIcon?: string;
+  loadingMessage?: string;
+  onRetry?: () => void;
+  skeletonComponent?: React.ReactNode;
 }
 
 export interface ProductCardProps {
@@ -369,6 +412,8 @@ export interface ProductCardProps {
   onPress: (product: Product) => void;
   showWishlist?: boolean;
   showStockAlert?: boolean;
+  userId?: string;
+  refreshKey?: number;
 }
 
 export interface PromotionCardProps {

@@ -61,7 +61,7 @@ export const useNotifications = (): UseNotificationsReturn => {
         await ExpoNotifications.setNotificationCategoryAsync("promotion", [
           {
             identifier: "view",
-            buttonTitle: "Ver Promoción",
+            buttonTitle: "View Promotion",
             options: { opensAppToForeground: true },
           },
         ]);
@@ -145,17 +145,39 @@ export const useNotifications = (): UseNotificationsReturn => {
           filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
-
+          const oldNotification = payload.old as Notification;
           const updatedNotification = payload.new as Notification;
+
           setNotifications((prev) =>
             prev.map((n) =>
               n.id === updatedNotification.id ? updatedNotification : n,
             ),
           );
 
-          // Update unread count if notification was marked as read
-          if (updatedNotification.is_read) {
+          // Update unread count if notification was marked as read (and wasn't read before)
+          if (updatedNotification.is_read && !oldNotification.is_read) {
+            setUnreadCount((prev) => Math.max(0, prev - 1));
+            ExpoNotifications.setBadgeCountAsync(Math.max(0, unreadCount - 1));
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: any) => {
+          console.log('Notification deleted:', payload);
+          const deletedId = payload.old.id;
 
+          // Remove from notifications list
+          setNotifications((prev) => prev.filter((n) => n.id !== deletedId));
+
+          // Update unread count if deleted notification was unread
+          if (!payload.old.is_read) {
             setUnreadCount((prev) => Math.max(0, prev - 1));
           }
         },

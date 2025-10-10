@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,14 +12,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../../hooks/useAuth";
 import { useNotifications } from "../../../hooks/useNotifications";
+import { supabase } from "../../../services/supabase";
 import {
   COLORS,
   TYPOGRAPHY,
   SPACING,
   BORDER_RADIUS,
 } from "../../../constants/theme";
-import { optimizeImageUrl } from "../../../utils";
 import Button from "../../../components/Button";
+import UserAvatar from "../../../components/UserAvatar";
 
 interface ProfileScreenProps {
   navigation: any;
@@ -76,16 +76,65 @@ const MenuItem: React.FC<MenuItemProps> = ({
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const { user, signOut } = useAuth();
   const { unreadCount } = useNotifications();
-
-  // Debug user data
-  console.log("🔍 ProfileScreen - User data:", {
-    hasUser: !!user,
-    userId: user?.id,
-    fullName: user?.full_name,
-    email: user?.email,
-    userType: user?.user_type,
-    rawUser: user
+  const [stats, setStats] = React.useState({
+    ordersCount: 0,
+    wishlistCount: 0,
+    alertsCount: 0,
   });
+
+  React.useEffect(() => {
+    if (user) {
+      loadUserStats();
+    }
+  }, [user]);
+
+  const loadUserStats = async () => {
+    if (!user) return;
+
+    try {
+      // Load active orders count (exclude delivered and cancelled)
+      const { count: ordersCount } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .not("status", "in", '("delivered","cancelled")');
+
+      // Load wishlist count
+      const { count: wishlistCount } = await supabase
+        .from("wishlist")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      // Load active alerts count
+      const { count: alertsCount } = await supabase
+        .from("stock_alerts")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_active", true);
+
+      setStats({
+        ordersCount: ordersCount || 0,
+        wishlistCount: wishlistCount || 0,
+        alertsCount: alertsCount || 0,
+      });
+    } catch (error) {
+      console.error("Error loading user stats:", error);
+    }
+  };
+
+  const calculateProfileCompletion = () => {
+    let completion = 25; // Base completion for having an account
+    if (user?.full_name) completion += 25;
+    if (user?.email) completion += 25;
+    if (user?.phone) completion += 25;
+    return completion;
+  };
+
+  const getMemberSince = () => {
+    if (!user?.created_at) return "";
+    const date = new Date(user.created_at);
+    return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  };
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -98,66 +147,112 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     ]);
   };
 
-  const renderUserHeader = () => (
-    <View style={styles.userHeader}>
-      <LinearGradient
-        colors={[COLORS.primary, COLORS.secondary]}
-        style={styles.userHeaderGradient}
-      >
-        <View style={styles.userInfo}>
-          <View style={styles.avatarContainer}>
-            {user?.avatar_url ? (
-              <Image
-                source={{ uri: optimizeImageUrl(user.avatar_url, 120, 120) }}
-                style={styles.avatar}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={40} color={COLORS.white} />
+  const renderUserHeader = () => {
+    const completion = calculateProfileCompletion();
+    const memberSince = getMemberSince();
+
+    return (
+      <View style={styles.userHeader}>
+        <LinearGradient
+          colors={[COLORS.primary, COLORS.secondary]}
+          style={styles.userHeaderGradient}
+        >
+          <View style={styles.userInfo}>
+            <UserAvatar
+              fullName={user?.full_name || "User"}
+              size={80}
+              onPress={() => navigation.navigate("EditProfile")}
+              showEditIcon={true}
+            />
+
+            <View style={styles.userDetails}>
+              <Text style={styles.userName}>
+                {user?.full_name || user?.email?.split('@')[0] || "User"}
+              </Text>
+              <Text style={styles.userEmail}>{user?.email || "Loading..."}</Text>
+              <View style={styles.userMetaRow}>
+                {user?.user_type && (
+                  <View style={styles.userTypeBadge}>
+                    <Ionicons
+                      name={user.user_type === "reseller" ? "business" : "person"}
+                      size={12}
+                      color={COLORS.white}
+                    />
+                    <Text style={styles.userTypeText}>
+                      {user.user_type === "reseller" ? "Reseller" : "Consumer"}
+                    </Text>
+                  </View>
+                )}
+                {memberSince && (
+                  <Text style={styles.memberSince}>Member since {memberSince}</Text>
+                )}
               </View>
-            )}
+            </View>
           </View>
 
-          <View style={styles.userDetails}>
-            <Text style={styles.userName}>
-              {user?.full_name || user?.email?.split('@')[0] || "User"}
-            </Text>
-            <Text style={styles.userEmail}>{user?.email || "Loading..."}</Text>
-            {user?.user_type && (
-              <View style={styles.userTypeBadge}>
-                <Ionicons
-                  name={user.user_type === "reseller" ? "business" : "person"}
-                  size={12}
-                  color={COLORS.white}
-                />
-                <Text style={styles.userTypeText}>
-                  {user.user_type === "reseller" ? "Reseller" : "Consumer"}
+          {/* Profile Completion */}
+          {completion < 100 && (
+            <TouchableOpacity
+              style={styles.profileCompletionCard}
+              onPress={() => navigation.navigate("EditProfile")}
+            >
+              <View style={styles.profileCompletionHeader}>
+                <Text style={styles.profileCompletionText}>
+                  Profile {completion}% complete
                 </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.white} />
               </View>
-            )}
-          </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${completion}%` }]} />
+              </View>
+            </TouchableOpacity>
+          )}
+        </LinearGradient>
+      </View>
+    );
+  };
 
-          <TouchableOpacity
-            style={styles.editProfileButton}
-            onPress={() => navigation.navigate("EditProfile")}
-          >
-            <Ionicons name="pencil" size={16} color={COLORS.white} />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+  const renderStatsCards = () => (
+    <View style={styles.statsContainer}>
+      <TouchableOpacity
+        style={styles.statCard}
+        onPress={() => navigation.navigate("OrderHistory")}
+      >
+        <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+        <Text style={styles.statValue}>{stats.ordersCount}</Text>
+        <Text style={styles.statLabel}>Orders</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.statCard}
+        onPress={() => navigation.navigate("Wishlist")}
+      >
+        <Ionicons name="heart-outline" size={24} color={COLORS.error} />
+        <Text style={styles.statValue}>{stats.wishlistCount}</Text>
+        <Text style={styles.statLabel}>Wishlist</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.statCard}
+        onPress={() => navigation.navigate("StockAlerts")}
+      >
+        <Ionicons name="notifications-outline" size={24} color={COLORS.secondary} />
+        <Text style={styles.statValue}>{stats.alertsCount}</Text>
+        <Text style={styles.statLabel}>Alerts</Text>
+      </TouchableOpacity>
     </View>
   );
 
-  const renderAccountSection = () => (
+
+  const renderActivitySection = () => (
     <View style={styles.menuSection}>
-      <Text style={styles.sectionTitle}>My Account</Text>
+      <Text style={styles.sectionTitle}>My Activity</Text>
 
       <MenuItem
-        icon="person-circle-outline"
-        title="Edit Profile"
-        subtitle="Personal information and settings"
-        onPress={() => navigation.navigate("EditProfile")}
+        icon="receipt-outline"
+        title="Orders"
+        subtitle="My previous purchases"
+        onPress={() => navigation.navigate("OrderHistory")}
       />
 
       <MenuItem
@@ -173,19 +268,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         subtitle="Product notifications"
         onPress={() => navigation.navigate("StockAlerts")}
       />
-
-      <MenuItem
-        icon="receipt-outline"
-        title="Order History"
-        subtitle="My previous purchases"
-        onPress={() => navigation.navigate("OrderHistory")}
-      />
     </View>
   );
 
-  const renderPreferencesSection = () => (
+
+  const renderSupportSection = () => (
     <View style={styles.menuSection}>
-      <Text style={styles.sectionTitle}>Preferences</Text>
+      <Text style={styles.sectionTitle}>Settings & Support</Text>
 
       <MenuItem
         icon="settings-outline"
@@ -196,61 +285,29 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       />
 
       <MenuItem
-        icon="language-outline"
-        title="Language"
-        subtitle="English"
-        onPress={() => {
-          /* TODO: Implement language selection */
-        }}
-      />
-
-      <MenuItem
-        icon="moon-outline"
-        title="Theme"
-        subtitle="Light"
-        onPress={() => {
-          /* TODO: Implement theme selection */
-        }}
-      />
-    </View>
-  );
-
-  const renderSupportSection = () => (
-    <View style={styles.menuSection}>
-      <Text style={styles.sectionTitle}>Support</Text>
-
-      <MenuItem
         icon="help-circle-outline"
         title="Help Center"
         subtitle="Frequently asked questions and guides"
-        onPress={() => {
-          /* TODO: Implement help center */
-        }}
+        onPress={() => navigation.navigate("HelpCenter")}
       />
 
       <MenuItem
         icon="chatbubble-outline"
         title="Contact"
         subtitle="Send message to support"
-        onPress={() => {
-          /* TODO: Implement contact */
-        }}
+        onPress={() => navigation.navigate("Contact")}
       />
 
       <MenuItem
         icon="shield-checkmark-outline"
         title="Terms and Conditions"
-        onPress={() => {
-          /* TODO: Implement terms */
-        }}
+        onPress={() => navigation.navigate("TermsAndConditions")}
       />
 
       <MenuItem
         icon="document-text-outline"
         title="Privacy Policy"
-        onPress={() => {
-          /* TODO: Implement privacy policy */
-        }}
+        onPress={() => navigation.navigate("PrivacyPolicy")}
       />
     </View>
   );
@@ -259,14 +316,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     if (user?.user_type !== "reseller") return null;
 
     return (
-      <View style={styles.menuSection}>
-        <Text style={styles.sectionTitle}>Business</Text>
+      <View style={styles.businessSection}>
+        <View style={styles.businessHeader}>
+          <Ionicons name="business" size={20} color={COLORS.secondary} />
+          <Text style={styles.businessTitle}>Business Tools</Text>
+        </View>
 
         <MenuItem
           icon="business-outline"
           title="Business Information"
           subtitle={user?.business_name || "Set up business data"}
           onPress={() => navigation.navigate("EditProfile")}
+          iconColor={COLORS.secondary}
         />
 
         <MenuItem
@@ -274,8 +335,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           title="Sales Reports"
           subtitle="Statistics and analytics"
           onPress={() => {
-            /* TODO: Implement sales reports */
+            Alert.alert("Coming Soon", "Sales reports feature will be available soon.");
           }}
+          iconColor={COLORS.secondary}
         />
 
         <MenuItem
@@ -283,8 +345,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           title="Payment Methods"
           subtitle="Configure billing"
           onPress={() => {
-            /* TODO: Implement payment methods */
+            Alert.alert("Coming Soon", "Payment methods feature will be available soon.");
           }}
+          iconColor={COLORS.secondary}
         />
       </View>
     );
@@ -298,9 +361,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         {renderUserHeader()}
-        {renderAccountSection()}
+        {renderStatsCards()}
+        {renderActivitySection()}
         {renderBusinessSection()}
-        {renderPreferencesSection()}
         {renderSupportSection()}
 
         {/* Sign Out Button */}
@@ -336,7 +399,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xl,
   },
   userHeader: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.xl,
   },
   userHeaderGradient: {
     paddingHorizontal: SPACING.lg,
@@ -348,6 +411,20 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginRight: SPACING.lg,
+    position: "relative",
+  },
+  avatarBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.secondary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   avatar: {
     width: 80,
@@ -368,6 +445,7 @@ const styles = StyleSheet.create({
   },
   userDetails: {
     flex: 1,
+    marginLeft: SPACING.md,
   },
   userName: {
     ...TYPOGRAPHY.h3,
@@ -378,7 +456,13 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.white,
     opacity: 0.9,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  userMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    flexWrap: "wrap",
   },
   userTypeBadge: {
     flexDirection: "row",
@@ -387,7 +471,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.sm,
-    alignSelf: "flex-start",
   },
   userTypeText: {
     ...TYPOGRAPHY.caption,
@@ -395,13 +478,65 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.xs,
     fontWeight: "600",
   },
-  editProfileButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
+  memberSince: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.white,
+    opacity: 0.8,
+  },
+  profileCompletionCard: {
+    marginTop: SPACING.md,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+  },
+  profileCompletionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: SPACING.sm,
+  },
+  profileCompletionText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.white,
+    fontWeight: "600",
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: COLORS.white,
+    borderRadius: 3,
+  },
+  statsContainer: {
+    flexDirection: "row",
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 100,
+  },
+  statValue: {
+    ...TYPOGRAPHY.h2,
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+    fontWeight: "bold",
+  },
+  statLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
   },
   menuSection: {
     backgroundColor: COLORS.white,
@@ -419,6 +554,28 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  businessSection: {
+    backgroundColor: `${COLORS.secondary}10`,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: `${COLORS.secondary}30`,
+  },
+  businessHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: `${COLORS.secondary}20`,
+    gap: SPACING.sm,
+  },
+  businessTitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.secondary,
+    fontWeight: "700",
   },
   menuItem: {
     flexDirection: "row",

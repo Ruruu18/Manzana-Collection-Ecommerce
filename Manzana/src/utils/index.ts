@@ -1,6 +1,18 @@
 import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 
+// Export error utilities
+export * from './errorMessages';
+
+// Export toast utilities
+export * from './toast';
+
+// Export category icon utilities
+export * from './categoryIcons';
+
+// Export promotion utilities
+export * from './promotionUtils';
+
 // Format currency
 export const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat("en-PH", {
@@ -12,7 +24,7 @@ export const formatCurrency = (amount: number): string => {
 // Format date
 export const formatDate = (date: string | Date): string => {
   const dateObj = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("es-MX", {
+  return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -22,7 +34,7 @@ export const formatDate = (date: string | Date): string => {
 // Format date with time
 export const formatDateTime = (date: string | Date): string => {
   const dateObj = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("es-MX", {
+  return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -31,25 +43,30 @@ export const formatDateTime = (date: string | Date): string => {
   }).format(dateObj);
 };
 
-// Format relative time (e.g., "hace 2 horas")
+// Format relative time (e.g., "2 hours ago") - Philippine Time aware
 export const formatRelativeTime = (date: string | Date): string => {
-  const dateObj = typeof date === "string" ? new Date(date) : date;
+  // Parse the timestamp from database
+  const timestamp = typeof date === "string" ? new Date(date) : date;
+
+  // Get current time
   const now = new Date();
-  const diffInMs = now.getTime() - dateObj.getTime();
-  const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
-  const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
-  const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+  // Calculate the difference in milliseconds
+  const diffInMs = now.getTime() - timestamp.getTime();
+  const diffInMinutes = Math.floor(Math.abs(diffInMs) / (1000 * 60));
+  const diffInHours = Math.floor(Math.abs(diffInMs) / (1000 * 60 * 60));
+  const diffInDays = Math.floor(Math.abs(diffInMs) / (1000 * 60 * 60 * 24));
 
   if (diffInMinutes < 1) {
-    return "Ahora";
+    return "Now";
   } else if (diffInMinutes < 60) {
-    return `Hace ${diffInMinutes} minuto${diffInMinutes > 1 ? "s" : ""}`;
+    return `${diffInMinutes} minute${diffInMinutes > 1 ? "s" : ""} ago`;
   } else if (diffInHours < 24) {
-    return `Hace ${diffInHours} hora${diffInHours > 1 ? "s" : ""}`;
+    return `${diffInHours} hour${diffInHours > 1 ? "s" : ""} ago`;
   } else if (diffInDays < 7) {
-    return `Hace ${diffInDays} día${diffInDays > 1 ? "s" : ""}`;
+    return `${diffInDays} day${diffInDays > 1 ? "s" : ""} ago`;
   } else {
-    return formatDate(dateObj);
+    return formatDate(timestamp);
   }
 };
 
@@ -70,15 +87,8 @@ export const validateEmail = (email: string): boolean => {
 
   const trimmedEmail = email.trim().toLowerCase();
 
-  // Very basic email validation - just check for basic format
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  
-  // If it matches basic regex, it's valid
-  if (emailRegex.test(trimmedEmail)) {
-    return true;
-  }
-
-  // Fallback: manual check for very basic format
+  // Super permissive email validation for testing
+  // Just check for @ symbol and basic structure
   const hasAt = trimmedEmail.includes("@");
   const atIndex = trimmedEmail.indexOf("@");
 
@@ -87,10 +97,15 @@ export const validateEmail = (email: string): boolean => {
   if (trimmedEmail.split("@").length !== 2) return false;
   
   const parts = trimmedEmail.split("@");
-  if (parts[1].length === 0) return false;
-  if (parts[0].length > 0 && parts[1].length > 0) return true;
+  const localPart = parts[0];
+  const domainPart = parts[1];
   
-  return false;
+  // Very basic checks
+  if (localPart.length === 0 || domainPart.length === 0) return false;
+  
+  // Allow any domain format for testing (even without dots)
+  // This makes it extremely permissive for testing purposes
+  return localPart.length > 0 && domainPart.length > 0;
 };
 
 // Validate password - more lenient for testing
@@ -117,20 +132,23 @@ export const validatePassword = (
 
 // Validate phone number (Mexican format)
 export const validatePhone = (phone: string): boolean => {
-  const phoneRegex = /^(\+52\s?)?(\d{2}\s?\d{4}\s?\d{4}|\d{10})$/;
-  return phoneRegex.test(phone.replace(/\s/g, ""));
+  // Philippine phone format: +63 9XX XXX XXXX or 09XX XXX XXXX
+  const cleanPhone = phone.replace(/\s/g, "");
+  const phoneRegex = /^(\+63|0)?9\d{9}$/;
+  return phoneRegex.test(cleanPhone);
 };
 
 // Format phone number
 export const formatPhone = (phone: string): string => {
   const cleanPhone = phone.replace(/\D/g, "");
 
-  if (cleanPhone.length === 10) {
-    return `${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 6)} ${cleanPhone.slice(6, 10)}`;
+  // Philippine mobile: 09XX XXX XXXX or +63 9XX XXX XXXX
+  if (cleanPhone.length === 11 && cleanPhone.startsWith("0")) {
+    return `${cleanPhone.slice(0, 4)} ${cleanPhone.slice(4, 7)} ${cleanPhone.slice(7, 11)}`;
   }
 
-  if (cleanPhone.length === 12 && cleanPhone.startsWith("52")) {
-    return `+52 ${cleanPhone.slice(2, 4)} ${cleanPhone.slice(4, 8)} ${cleanPhone.slice(8, 12)}`;
+  if (cleanPhone.length === 12 && cleanPhone.startsWith("63")) {
+    return `+63 ${cleanPhone.slice(2, 5)} ${cleanPhone.slice(5, 8)} ${cleanPhone.slice(8, 12)}`;
   }
 
   return phone;
@@ -460,10 +478,11 @@ export const getPrimaryImageUrl = (
   return primaryImage?.url || fallback || "";
 };
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 // Clear corrupted authentication session
 export const clearCorruptedSession = async (): Promise<void> => {
   try {
-    const AsyncStorage = await import("@react-native-async-storage/async-storage");
     
     // Clear all Supabase related keys
     const keys = [
@@ -475,7 +494,7 @@ export const clearCorruptedSession = async (): Promise<void> => {
     
     for (const key of keys) {
       try {
-        await AsyncStorage.default.removeItem(key);
+        await AsyncStorage.removeItem(key);
       } catch (error) {
         console.warn(`Failed to remove ${key}:`, error);
       }

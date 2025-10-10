@@ -3,8 +3,8 @@
  * Fallback methods when Supabase client fails
  */
 
-const SUPABASE_URL = 'https://enxdypnlbcltrjuepldk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVueGR5cG5sYmNsdHJqdWVwbGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODA2NTIsImV4cCI6MjA3MTk1NjY1Mn0.7M37KV8MD6o9N3cxPw3etYbBfm_j1IU2lsLmZMz3viI';
+const SUPABASE_URL = 'https://fuqsweradcynpbgarwoc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1cXN3ZXJhZGN5bnBiZ2Fyd29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTQ2MzcsImV4cCI6MjA3MzE3MDYzN30.bEUieVgxnM1xaBgMaj8AM07vSbdKP_Ti_pWKUGULXzI';
 
 export interface DirectSignUpParams {
   email: string;

@@ -22,6 +22,15 @@ import {
 } from "../../constants/theme";
 import { validateEmail, validatePhone } from "../../utils";
 import Button from "../../components/Button";
+import Picker from "../../components/Picker";
+import UserAvatar from "../../components/UserAvatar";
+import {
+  getRegions,
+  getProvincesByRegion,
+  getCitiesByProvince,
+  getBarangaysByCity,
+  philippineLocations,
+} from "../../data/philippineLocations";
 
 interface ProfileForm {
   full_name: string;
@@ -55,6 +64,13 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
   });
   const [errors, setErrors] = useState<Partial<ProfileForm>>({});
 
+  // Location state
+  const [region, setRegion] = useState("");
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState("");
+  const [barangay, setBarangay] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+
   useEffect(() => {
     console.log("🔍 EditProfileScreen - User data:", {
       hasUser: !!user,
@@ -64,9 +80,11 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
       userType: user?.user_type,
       phone: user?.phone,
       address: user?.address,
-      city: user?.city,
+      region: user?.region,
       state: user?.state,
-      zipCode: user?.zip_code
+      city: user?.city,
+      barangay: user?.barangay,
+      postalCode: user?.postal_code
     });
     
     if (user) {
@@ -77,16 +95,142 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
         address: user.address || "",
         city: user.city || "",
         state: user.state || "",
-        postal_code: user.zip_code || "",
+        postal_code: user.postal_code || "",
         user_type: user.user_type || "consumer",
       };
-      
+
       console.log("🔄 EditProfileScreen - Setting form data:", newForm);
       setForm(newForm);
+
+      // Load existing location data directly if available (after migration)
+      if (user.region) setRegion(user.region);
+      if (user.state) setProvince(user.state);
+      if (user.city) setCity(user.city);
+      if (user.barangay) setBarangay(user.barangay);
+
+      // Auto-detect region from existing province/city data ONLY if region is missing
+      if (!user.region && (user.state || user.city)) {
+        let foundRegion = false;
+
+        // Find the region that contains this province or city
+        for (const region of philippineLocations) {
+          if (foundRegion) break;
+
+          // Check if province matches
+          if (user.state) {
+            const matchedProvince = region.provinces.find(
+              (p) => p.name.toLowerCase() === user.state.toLowerCase()
+            );
+            if (matchedProvince) {
+              setRegion(region.name);
+              setProvince(matchedProvince.name); // Use exact name from data
+
+              // Try to match city with case-insensitive search
+              if (user.city) {
+                const matchedCity = matchedProvince.cities.find(
+                  (c) => c.name.toLowerCase().includes(user.city.toLowerCase()) ||
+                         user.city.toLowerCase().includes(c.name.toLowerCase())
+                );
+                if (matchedCity) {
+                  setCity(matchedCity.name); // Use exact name from data
+                }
+              }
+              foundRegion = true;
+              break;
+            }
+          }
+
+          // If no province match, try to find by city alone
+          if (!user.state && user.city) {
+            for (const province of region.provinces) {
+              const matchedCity = province.cities.find(
+                (c) => c.name.toLowerCase().includes(user.city.toLowerCase()) ||
+                       user.city.toLowerCase().includes(c.name.toLowerCase())
+              );
+              if (matchedCity) {
+                setRegion(region.name);
+                setProvince(province.name);
+                setCity(matchedCity.name); // Use exact name from data
+                foundRegion = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Load street address
+      if (user.address) {
+        // If barangay is already in separate field, use address as-is
+        if (user.barangay) {
+          setStreetAddress(user.address);
+        } else {
+          // Try to extract barangay from address for old data format
+          const parts = user.address.split(",");
+          if (parts.length >= 2) {
+            setStreetAddress(parts[0].trim());
+            if (!user.barangay) setBarangay(parts[1].trim());
+          } else {
+            setStreetAddress(user.address);
+          }
+        }
+      }
     } else {
       console.log("⚠️ EditProfileScreen - No user data available");
     }
   }, [user]);
+
+  // Reset province when region changes
+  useEffect(() => {
+    if (region && province) {
+      const provinces = getProvincesByRegion(region);
+      if (!provinces.includes(province)) {
+        setProvince("");
+        setCity("");
+        setBarangay("");
+      }
+    }
+  }, [region]);
+
+  // Reset city when province changes
+  useEffect(() => {
+    if (region && province && city) {
+      const cities = getCitiesByProvince(region, province);
+      if (!cities.includes(city)) {
+        setCity("");
+        setBarangay("");
+      }
+    }
+  }, [province]);
+
+  // Reset barangay when city changes
+  useEffect(() => {
+    if (region && province && city && barangay) {
+      const barangays = getBarangaysByCity(region, province, city);
+      if (!barangays.includes(barangay)) {
+        setBarangay("");
+      }
+    }
+  }, [city]);
+
+  // Update form address when location changes
+  useEffect(() => {
+    if (streetAddress && barangay) {
+      setForm((prev) => ({
+        ...prev,
+        address: `${streetAddress}, ${barangay}`,
+        city: city,
+        state: province,
+      }));
+    } else if (streetAddress) {
+      setForm((prev) => ({
+        ...prev,
+        address: streetAddress,
+        city: city,
+        state: province,
+      }));
+    }
+  }, [streetAddress, barangay, city, province]);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<ProfileForm> = {};
@@ -123,26 +267,35 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
       setLoading(true);
       console.log("🔄 Updating profile for user ID:", user.id);
 
-      const { error } = await supabase
+      // Prepare address fields
+      const addressData: any = {
+        full_name: form.full_name,
+        phone: form.phone,
+        user_type: form.user_type,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Add location fields if they exist
+      if (region) addressData.region = region;
+      if (province) addressData.state = province;
+      if (city) addressData.city = city;
+      if (barangay) addressData.barangay = barangay;
+      if (streetAddress) addressData.address = streetAddress;
+      if (form.postal_code) addressData.postal_code = form.postal_code;
+
+      const { data, error } = await supabase
         .from("users")
-        .update({
-          full_name: form.full_name,
-          phone: form.phone,
-          address: form.address,
-          city: form.city,
-          state: form.state,
-          postal_code: form.postal_code,
-          user_type: form.user_type,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
+        .update(addressData)
+        .eq("id", user.id)
+        .select()
+        .single();
 
       if (error) {
         console.error("❌ Database update error:", error);
         throw error;
       }
 
-      console.log("✅ Database profile updated successfully");
+      console.log("✅ Database profile updated successfully:", data);
 
       // Update email separately if changed
       if (form.email !== user.email) {
@@ -158,17 +311,17 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
         console.log("✅ Email updated successfully");
       }
 
-      // Update local user state
+      // Update local user state with the data from database
       await updateProfile({
         full_name: form.full_name,
         phone: form.phone,
-        address: form.address,
-        city: form.city,
-        state: form.state,
-        zip_code: form.postal_code,
+        address: streetAddress,
+        city: city,
+        state: province,
+        postal_code: form.postal_code,
       });
-      
-      console.log("✅ Profile update completed successfully");
+
+      console.log("✅ Profile update completed successfully with phone:", form.phone);
       Alert.alert("Success", "Profile updated successfully");
       navigation.goBack();
     } catch (error: any) {
@@ -223,6 +376,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
     placeholder: string,
     keyboardType: any = "default",
     multiline: boolean = false,
+    editable: boolean = true,
   ) => (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -231,9 +385,11 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
           styles.input,
           multiline && styles.multilineInput,
           errors[field] && styles.inputError,
+          !editable && styles.inputDisabled,
         ]}
         value={form[field]}
         onChangeText={(text) => updateForm(field, text)}
+        editable={editable}
         placeholder={placeholder}
         placeholderTextColor={COLORS.textSecondary}
         keyboardType={keyboardType}
@@ -349,28 +505,99 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Avatar Section */}
+          <View style={styles.avatarSection}>
+            <UserAvatar
+              fullName={form.full_name || user?.full_name || "User"}
+              size={100}
+              showEditIcon={false}
+            />
+            <Text style={styles.avatarHint}>
+              Your avatar is generated from your name
+            </Text>
+          </View>
+
           {/* Personal Information */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Personal Information</Text>
             {renderInput("Full Name", "full_name", "Your full name")}
-            {renderInput("Email", "email", "your@email.com", "email-address")}
-            {renderInput("Phone", "phone", "+1234567890", "phone-pad")}
+            {renderInput("Email", "email", "your@email.com", "email-address", false, false)}
+            <Text style={styles.helperText}>Email cannot be changed for security reasons</Text>
+            {renderInput("Phone", "phone", "09XX XXX XXXX", "phone-pad")}
             {renderUserTypeSelector()}
           </View>
 
           {/* Address Information */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Address</Text>
-            {renderInput(
-              "Address",
-              "address",
-              "Street, number, neighborhood",
-              "default",
-              true,
-            )}
-            {renderInput("City", "city", "Your city")}
-            {renderInput("State", "state", "Your state")}
-            {renderInput("ZIP Code", "postal_code", "12345", "numeric")}
+
+            <Picker
+              label="Region"
+              value={region}
+              placeholder="Select region"
+              options={getRegions()}
+              onSelect={(value) => {
+                setRegion(value);
+                setProvince("");
+                setCity("");
+                setBarangay("");
+              }}
+              disabled={loading}
+            />
+
+            <Picker
+              label="Province"
+              value={province}
+              placeholder="Select province"
+              options={region ? getProvincesByRegion(region) : []}
+              onSelect={(value) => {
+                setProvince(value);
+                setCity("");
+                setBarangay("");
+              }}
+              disabled={!region || loading}
+            />
+
+            <Picker
+              label="City/Municipality"
+              value={city}
+              placeholder="Select city"
+              options={
+                region && province ? getCitiesByProvince(region, province) : []
+              }
+              onSelect={(value) => {
+                setCity(value);
+                setBarangay("");
+              }}
+              disabled={!province || loading}
+            />
+
+            <Picker
+              label="Barangay"
+              value={barangay}
+              placeholder="Select barangay"
+              options={
+                region && province && city
+                  ? getBarangaysByCity(region, province, city)
+                  : []
+              }
+              onSelect={setBarangay}
+              disabled={!city || loading}
+            />
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Street Address</Text>
+              <TextInput
+                style={styles.input}
+                value={streetAddress}
+                onChangeText={setStreetAddress}
+                placeholder="House/Unit No., Street Name"
+                placeholderTextColor={COLORS.textSecondary}
+                editable={!loading}
+              />
+            </View>
+
+            {renderInput("Postal Code", "postal_code", "1000", "numeric")}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -461,6 +688,17 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: COLORS.error,
   },
+  inputDisabled: {
+    backgroundColor: COLORS.surface,
+    color: COLORS.textSecondary,
+  },
+  helperText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    marginTop: -SPACING.sm,
+    marginBottom: SPACING.md,
+    fontStyle: 'italic',
+  },
   errorText: {
     ...TYPOGRAPHY.caption,
     color: COLORS.error,
@@ -526,6 +764,18 @@ const styles = StyleSheet.create({
   },
   errorButton: {
     minWidth: 120,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.md,
+  },
+  avatarHint: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+    textAlign: 'center',
   },
 });
 

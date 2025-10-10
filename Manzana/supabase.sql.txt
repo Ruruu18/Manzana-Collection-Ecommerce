@@ -16,10 +16,10 @@ CREATE TABLE IF NOT EXISTS public.users (
     phone VARCHAR(20),
     address TEXT,
     city VARCHAR(100),
-    state VARCHAR(100),
+    state VARCHAR(100), -- Used as Province in Philippines
     zip_code VARCHAR(20),
     postal_code VARCHAR(20),
-    country VARCHAR(100) DEFAULT 'Mexico',
+    country VARCHAR(100) DEFAULT 'Philippines',
     business_name VARCHAR(255), -- For resellers
     tax_id VARCHAR(50), -- For resellers
     push_token TEXT,
@@ -405,11 +405,42 @@ CREATE POLICY "Users can create own orders" ON orders
 CREATE POLICY "Users can view own order items" ON order_items
     FOR SELECT USING (
         EXISTS (
-            SELECT 1 FROM orders 
-            WHERE orders.id = order_items.order_id 
+            SELECT 1 FROM orders
+            WHERE orders.id = order_items.order_id
             AND orders.user_id = auth.uid()
         )
     );
+
+-- Admin policies for orders management
+DROP POLICY IF EXISTS admin_view_all_orders ON orders;
+CREATE POLICY admin_view_all_orders ON orders
+  FOR SELECT TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_update_all_orders ON orders;
+CREATE POLICY admin_update_all_orders ON orders
+  FOR UPDATE TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_view_all_order_items ON order_items;
+CREATE POLICY admin_view_all_order_items ON order_items
+  FOR SELECT TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_view_all_users ON users;
+CREATE POLICY admin_view_all_users ON users
+  FOR SELECT TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_update_all_users ON users;
+CREATE POLICY admin_update_all_users ON users
+  FOR UPDATE TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS admin_insert_users ON users;
+CREATE POLICY admin_insert_users ON users
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
 
 -- Reviews policies
 CREATE POLICY "Users can manage own reviews" ON reviews
@@ -528,44 +559,44 @@ CREATE TRIGGER check_stock_alerts_trigger AFTER UPDATE OF stock_quantity ON prod
 
 -- Insert sample categories
 INSERT INTO categories (name, description, image_url, sort_order) VALUES
-('Vestidos', 'Hermosos vestidos para toda ocasión', 'https://picsum.photos/400/300?random=1', 1),
-('Blusas', 'Blusas elegantes y casuales', 'https://picsum.photos/400/300?random=2', 2),
-('Pantalones', 'Pantalones cómodos y con estilo', 'https://picsum.photos/400/300?random=3', 3),
-('Accesorios', 'Accesorios perfectos para completar tu look', 'https://picsum.photos/400/300?random=4', 4),
-('Zapatos', 'Calzado para todas las ocasiones', 'https://picsum.photos/400/300?random=5', 5)
+('Dresses', 'Beautiful dresses for every occasion', 'https://picsum.photos/400/300?random=1', 1),
+('Blouses', 'Elegant and casual blouses', 'https://picsum.photos/400/300?random=2', 2),
+('Pants', 'Comfortable and stylish pants', 'https://picsum.photos/400/300?random=3', 3),
+('Accessories', 'Perfect accessories to complete your look', 'https://picsum.photos/400/300?random=4', 4),
+('Shoes', 'Footwear for all occasions', 'https://picsum.photos/400/300?random=5', 5)
 ON CONFLICT DO NOTHING;
 
 -- Insert sample products
 WITH dress_category AS (
-    SELECT id FROM categories WHERE name = 'Vestidos' LIMIT 1
+    SELECT id FROM categories WHERE name = 'Dresses' LIMIT 1
 ),
 top_category AS (
-    SELECT id FROM categories WHERE name = 'Blusas' LIMIT 1
+    SELECT id FROM categories WHERE name = 'Blouses' LIMIT 1
 )
-INSERT INTO products (name, description, price, discounted_price, sku, category_id, stock_quantity, is_featured, tags, brand) 
-SELECT 
-    'Vestido Elegante de Verano',
-    'Un hermoso vestido cómodo perfecto para ocasiones de verano',
+INSERT INTO products (name, description, price, discounted_price, sku, category_id, stock_quantity, is_featured, tags, brand)
+SELECT
+    'Elegant Summer Dress',
+    'A beautiful comfortable dress perfect for summer occasions',
     89.99,
     69.99,
     'DRESS-001',
     dc.id,
     15,
     true,
-    ARRAY['verano', 'elegante', 'vestido'],
+    ARRAY['summer', 'elegant', 'dress'],
     'Manzana'
 FROM dress_category dc
 UNION ALL
-SELECT 
-    'Blusa de Algodón Casual',
-    'Blusa cómoda de algodón para uso diario',
+SELECT
+    'Casual Cotton Blouse',
+    'Comfortable cotton blouse for daily use',
     34.99,
     NULL,
     'TOP-001',
     tc.id,
     25,
     true,
-    ARRAY['casual', 'algodón', 'blusa'],
+    ARRAY['casual', 'cotton', 'blouse'],
     'Manzana'
 FROM top_category tc
 ON CONFLICT (sku) DO NOTHING;
@@ -578,7 +609,7 @@ INSERT INTO product_images (product_id, url, alt_text, is_primary, sort_order)
 SELECT 
     pd.id,
     'https://picsum.photos/300/400?random=' || (ROW_NUMBER() OVER() + 20),
-    pd.name || ' - Imagen principal',
+    pd.name || ' - Main image',
     true,
     1
 FROM product_data pd
@@ -586,8 +617,8 @@ ON CONFLICT DO NOTHING;
 
 -- Insert sample promotions
 INSERT INTO promotions (title, description, image_url, promotion_type, discount_value, start_date, end_date, is_featured, is_active) VALUES
-('Venta de Verano', 'Hasta 50% de descuento en toda la colección de verano', 'https://picsum.photos/600/300?random=10', 'percentage', 50, NOW(), NOW() + INTERVAL '30 days', true, true),
-('Nuevas Llegadas', '20% de descuento en nuevas llegadas esta semana', 'https://picsum.photos/600/300?random=11', 'percentage', 20, NOW(), NOW() + INTERVAL '7 days', true, true)
+('Summer Sale', 'Up to 50% off on the entire summer collection', 'https://picsum.photos/600/300?random=10', 'percentage', 50, NOW(), NOW() + INTERVAL '30 days', true, true),
+('New Arrivals', '20% off on new arrivals this week', 'https://picsum.photos/600/300?random=11', 'percentage', 20, NOW(), NOW() + INTERVAL '7 days', true, true)
 ON CONFLICT DO NOTHING;
 
 -- ================================
@@ -653,10 +684,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'promotion-images') THEN
     INSERT INTO storage.buckets (id, name, public) VALUES ('promotion-images', 'promotion-images', true);
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'category-images') THEN
+    INSERT INTO storage.buckets (id, name, public) VALUES ('category-images', 'category-images', true);
+  END IF;
 END $$;
 
 -- Storage RLS is enabled by default on storage.objects
--- Allow public read for these two buckets
+-- Allow public read for these buckets
 DROP POLICY IF EXISTS public_read_product_images ON storage.objects;
 CREATE POLICY public_read_product_images ON storage.objects
   FOR SELECT USING (bucket_id = 'product-images');
@@ -664,6 +698,10 @@ CREATE POLICY public_read_product_images ON storage.objects
 DROP POLICY IF EXISTS public_read_promotion_images ON storage.objects;
 CREATE POLICY public_read_promotion_images ON storage.objects
   FOR SELECT USING (bucket_id = 'promotion-images');
+
+DROP POLICY IF EXISTS public_read_category_images ON storage.objects;
+CREATE POLICY public_read_category_images ON storage.objects
+  FOR SELECT USING (bucket_id = 'category-images');
 
 -- Allow authenticated users to upload/update/delete in these buckets
 DROP POLICY IF EXISTS admin_write_product_images ON storage.objects;

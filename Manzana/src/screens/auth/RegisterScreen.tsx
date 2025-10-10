@@ -13,7 +13,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../hooks/useAuth";
-import { validateEmail, validatePassword } from "../../utils";
+import { validateEmail } from "../../utils";
+import { validatePassword, validateName, sanitizeText } from "../../utils/validation";
+import { registrationRateLimiter, formatRemainingTime } from "../../utils/rateLimit";
 import {
   COLORS,
   TYPOGRAPHY,
@@ -38,31 +40,35 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     userType: "consumer",
   });
   const [errors, setErrors] = useState<Partial<RegisterForm>>({});
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong'>('weak');
 
 
 
   const validateForm = (): boolean => {
     const newErrors: Partial<RegisterForm> = {};
 
-    if (!form.fullName.trim()) {
-      newErrors.fullName = "Full name is required";
-    } else if (form.fullName.trim().length < 2) {
-      newErrors.fullName = "Name must be at least 2 characters";
+    // Validate and sanitize full name
+    const nameValidation = validateName(form.fullName);
+    if (!nameValidation.isValid) {
+      newErrors.fullName = nameValidation.error;
     }
 
+    // Validate email
     if (!form.email.trim()) {
       newErrors.email = "Email is required";
     } else if (!validateEmail(form.email)) {
       newErrors.email = "Please enter a valid email address";
     }
 
+    // Validate password with strong requirements
     const passwordValidation = validatePassword(form.password);
     if (!form.password) {
       newErrors.password = "Password is required";
     } else if (!passwordValidation.isValid) {
-      newErrors.password = passwordValidation.errors[0];
+      newErrors.password = passwordValidation.errors.join('. ');
     }
 
+    // Validate confirm password
     if (!form.confirmPassword) {
       newErrors.confirmPassword = "Please confirm your password";
     } else if (form.password !== form.confirmPassword) {
@@ -78,32 +84,55 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
       return;
     }
 
-    try {
+    // Check rate limiting
+    const identifier = form.email.toLowerCase();
+    const rateLimitCheck = registrationRateLimiter.isRateLimited(identifier);
 
-      const { error } = await signUp(form.email.trim(), form.password, {
-        full_name: form.fullName.trim(),
+    if (rateLimitCheck.limited) {
+      const timeRemaining = formatRemainingTime(rateLimitCheck.remainingTime || 0);
+      Alert.alert(
+        "Too Many Attempts",
+        `You've made too many registration attempts. Please try again in ${timeRemaining}.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    try {
+      // Sanitize inputs before sending
+      const sanitizedName = sanitizeText(form.fullName.trim());
+      const sanitizedEmail = form.email.trim().toLowerCase();
+
+      const { error } = await signUp(sanitizedEmail, form.password, {
+        full_name: sanitizedName,
         user_type: form.userType,
       });
 
       if (error) {
+        // Record failed attempt
+        registrationRateLimiter.recordAttempt(identifier);
+
         let errorMessage = error;
-        
+
         // Handle specific Supabase errors
         if (error.includes("Email address") && error.includes("is invalid")) {
           errorMessage = "Supabase is rejecting this email format. Try:\n• testuser123@example.com\n• demo@outlook.com\n• yourname@yahoo.com\n\nOr check Supabase Auth settings to allow all emails.";
         } else if (error.includes("already registered")) {
           errorMessage = "This email is already registered. Try signing in instead.";
         }
-        
+
         Alert.alert("Registration Error", errorMessage);
         return;
       }
 
+      // Reset rate limit on successful registration
+      registrationRateLimiter.reset(identifier);
+
       Alert.alert(
         "Registration Successful!",
         "Your account has been created successfully. Please sign in with your credentials to continue.",
-        [{ 
-          text: "Sign In", 
+        [{
+          text: "Sign In",
           onPress: () => navigation.navigate("Login")
         }],
       );
@@ -120,6 +149,12 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
     value: string | "consumer" | "reseller",
   ) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+
+    // Update password strength indicator when password changes
+    if (field === 'password' && typeof value === 'string') {
+      const validation = validatePassword(value);
+      setPasswordStrength(validation.strength);
+    }
 
     // Clear error when user starts typing
     if (errors[field]) {
@@ -279,6 +314,46 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) => {
               autoComplete="password-new"
             />
 
+            {/* Password Strength Indicator */}
+            {form.password && (
+              <View style={styles.passwordStrengthContainer}>
+                <Text style={styles.passwordStrengthLabel}>Password strength:</Text>
+                <View style={styles.strengthBars}>
+                  <View
+                    style={[
+                      styles.strengthBar,
+                      passwordStrength === 'weak' && styles.strengthBarWeak,
+                      passwordStrength === 'medium' && styles.strengthBarMedium,
+                      passwordStrength === 'strong' && styles.strengthBarStrong,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBar,
+                      (passwordStrength === 'medium' || passwordStrength === 'strong') && styles.strengthBarMedium,
+                      passwordStrength === 'strong' && styles.strengthBarStrong,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.strengthBar,
+                      passwordStrength === 'strong' && styles.strengthBarStrong,
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.strengthText,
+                    passwordStrength === 'weak' && styles.strengthTextWeak,
+                    passwordStrength === 'medium' && styles.strengthTextMedium,
+                    passwordStrength === 'strong' && styles.strengthTextStrong,
+                  ]}
+                >
+                  {passwordStrength.charAt(0).toUpperCase() + passwordStrength.slice(1)}
+                </Text>
+              </View>
+            )}
+
             {/* Confirm Password Input */}
             <Input
               label="Confirm password"
@@ -423,6 +498,52 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.primary,
     fontWeight: "600",
+  },
+  passwordStrengthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: -SPACING.sm,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  passwordStrengthLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  strengthBars: {
+    flexDirection: 'row',
+    gap: 4,
+    flex: 1,
+  },
+  strengthBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+  },
+  strengthBarWeak: {
+    backgroundColor: COLORS.error,
+  },
+  strengthBarMedium: {
+    backgroundColor: COLORS.warning,
+  },
+  strengthBarStrong: {
+    backgroundColor: COLORS.success,
+  },
+  strengthText: {
+    ...TYPOGRAPHY.caption,
+    fontWeight: '600',
+    minWidth: 60,
+    textAlign: 'right',
+  },
+  strengthTextWeak: {
+    color: COLORS.error,
+  },
+  strengthTextMedium: {
+    color: COLORS.warning,
+  },
+  strengthTextStrong: {
+    color: COLORS.success,
   },
 });
 

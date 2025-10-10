@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../hooks/useAuth";
 import { validateEmail } from "../../utils";
+import { authRateLimiter, formatRemainingTime } from "../../utils/rateLimit";
 import {
   COLORS,
   TYPOGRAPHY,
@@ -58,19 +59,42 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const handleLogin = async () => {
     if (!validateForm()) return;
 
+    // Check rate limiting
+    const identifier = form.email.toLowerCase();
+    const rateLimitCheck = authRateLimiter.isRateLimited(identifier);
+
+    if (rateLimitCheck.limited) {
+      const timeRemaining = formatRemainingTime(rateLimitCheck.remainingTime || 0);
+      Alert.alert(
+        "Too Many Attempts",
+        `You've made too many login attempts. Please try again in ${timeRemaining}.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     try {
       const { error } = await signIn(form.email, form.password);
 
       if (error) {
-        Alert.alert(
-          "Login Failed",
-          error.includes("Invalid login credentials") 
-            ? "Invalid email or password. Please try again."
-            : "Unable to sign in. Please check your credentials.",
-          [{ text: "OK" }]
-        );
+        // Record failed attempt
+        authRateLimiter.recordAttempt(identifier);
+
+        const remainingAttempts = authRateLimiter.getRemainingAttempts(identifier);
+        let errorMessage = error.includes("Invalid login credentials")
+          ? "Invalid email or password."
+          : "Unable to sign in. Please check your credentials.";
+
+        if (remainingAttempts <= 2 && remainingAttempts > 0) {
+          errorMessage += `\n\n${remainingAttempts} attempt${remainingAttempts !== 1 ? 's' : ''} remaining before temporary lock.`;
+        }
+
+        Alert.alert("Login Failed", errorMessage, [{ text: "OK" }]);
         return;
       }
+
+      // Reset rate limit on successful login
+      authRateLimiter.reset(identifier);
     } catch (error) {
       Alert.alert(
         "Connection Error",
@@ -100,7 +124,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           {/* Header */}
           <View style={styles.header}>
             <Image
-              source={require("../../../assets/images/dress.png")}
+              source={require("../../../assets/images/MANZANA-LOGO.png")}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -114,7 +138,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             {/* Email Input */}
             <Input
               label="Email"
-              placeholder="your@email.com"
+              placeholder="Email"
               value={form.email}
               onChangeText={(text) => updateForm("email", text)}
               leftIcon="mail-outline"
@@ -131,7 +155,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             {/* Password Input */}
             <Input
               label="Password"
-              placeholder="Your password"
+              placeholder="Enter Password"
               value={form.password}
               onChangeText={(text) => updateForm("password", text)}
               leftIcon="lock-closed-outline"
@@ -224,18 +248,20 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xxl,
   },
   logo: {
-    width: 80,
-    height: 80,
-    marginBottom: SPACING.md,
+    width: 120,
+    height: 120,
+    marginBottom: SPACING.lg,
   },
   title: {
     ...TYPOGRAPHY.h1,
     color: COLORS.text,
     marginBottom: SPACING.xs,
+    fontWeight: "bold",
   },
   subtitle: {
     ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
+    fontSize: 16,
   },
   form: {
     flex: 1,

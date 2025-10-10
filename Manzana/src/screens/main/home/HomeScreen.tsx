@@ -1,21 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   FlatList,
   Dimensions,
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { supabase } from "../../../services/supabase";
 import { useAuth } from "../../../hooks/useAuth";
 import { useNotifications } from "../../../hooks/useNotifications";
+import { useProductImagesPreloader } from "../../../hooks/useImagePreloader";
+import { useCartStore } from "../../../store/cartStore";
+import { useFeaturedProducts, useNewProducts } from "../../../hooks/useProductQueries";
+import { useFeaturedPromotions, useCategories } from "../../../hooks/usePromotionQueries";
 import { Product, Category, Promotion, HomeScreenProps } from "../../../types";
 import {
   COLORS,
@@ -24,14 +27,12 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from "../../../constants/theme";
-import {
-  formatCurrency,
-  optimizeImageUrl,
-  sortProductsWithImages,
-} from "../../../utils";
+import { formatCurrency, getCategoryIcon } from "../../../utils";
 import LoadingState from "../../../components/LoadingState";
 import ProductCard from "../../../components/ProductCard";
 import Button from "../../../components/Button";
+import PromotionCountdown from "../../../components/PromotionCountdown";
+import OptimizedImage from "../../../components/OptimizedImage";
 
 const { width: screenWidth } = Dimensions.get("window");
 const PROMOTION_CARD_WIDTH = screenWidth - SPACING.lg * 2;
@@ -41,143 +42,73 @@ const PRODUCT_CARD_WIDTH = 160;
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
-  const [loading, setLoading] = useState(true);
+
+  // Use Zustand store for cart count
+  const { cartCount, loadCart } = useCartStore();
+
+  // Use React Query for cached data fetching
+  const {
+    data: featuredPromotions = [],
+    isLoading: promotionsLoading,
+    refetch: refetchPromotions,
+  } = useFeaturedPromotions(user?.user_type);
+
+  const {
+    data: categories = [],
+    isLoading: categoriesLoading,
+    refetch: refetchCategories,
+  } = useCategories();
+
+  const {
+    data: featuredProducts = [],
+    isLoading: featuredLoading,
+    refetch: refetchFeatured,
+  } = useFeaturedProducts();
+
+  const {
+    data: newProducts = [],
+    isLoading: newProductsLoading,
+    refetch: refetchNew,
+  } = useNewProducts();
+
+  // Combined loading state
+  const loading = promotionsLoading || categoriesLoading || featuredLoading || newProductsLoading;
   const [refreshing, setRefreshing] = useState(false);
-  const [featuredPromotions, setFeaturedPromotions] = useState<Promotion[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [newProducts, setNewProducts] = useState<Product[]>([]);
+
+  // Preload featured product images
+  useProductImagesPreloader(featuredProducts, {
+    width: PRODUCT_CARD_WIDTH,
+    height: PRODUCT_CARD_WIDTH,
+    quality: 85,
+    enabled: featuredProducts.length > 0,
+  });
 
   useEffect(() => {
-    loadInitialData();
-  }, []);
-
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      await Promise.all([
-        fetchFeaturedPromotions(),
-        fetchCategories(),
-        fetchFeaturedProducts(),
-        fetchNewProducts(),
-      ]);
-    } catch (error) {
-      console.error("Error loading initial data:", error);
-    } finally {
-      setLoading(false);
+    if (user?.id) {
+      loadCart(user.id);
     }
-  };
+  }, [user?.id]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadInitialData();
-    setRefreshing(false);
-  };
-
-  const fetchFeaturedPromotions = async () => {
-    try {
-      const now = new Date().toISOString();
-      let query = supabase
-        .from("promotions")
-        .select("*")
-        .eq("is_active", true)
-        .eq("is_featured", true)
-        .lte("start_date", now)
-        .gte("end_date", now)
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      // Filter by user type if user is logged in
-      if (user?.user_type) {
-        query = query.or(
-          `user_type_restriction.is.null,user_type_restriction.eq.${user.user_type}`,
-        );
+  // Refresh cart when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (user?.id) {
+        loadCart(user.id);
       }
+    }, [user?.id])
+  );
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setFeaturedPromotions(data || []);
-    } catch (error) {
-      console.error("Error fetching featured promotions:", error);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("*")
-        .eq("is_active", true)
-        .is("parent_id", null)
-        .order("sort_order", { ascending: true })
-        .limit(8);
-
-      if (error) throw error;
-      setCategories(data || []);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    }
-  };
-
-  const fetchFeaturedProducts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          `
-          *,
-          category:categories(id, name),
-          images:product_images(id, url, alt_text, is_primary)
-        `,
-        )
-        .eq("is_active", true)
-        .eq("is_featured", true)
-        .gt("stock_quantity", 0)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
-      // Sort images to put primary first using utility function
-      const productsWithSortedImages = sortProductsWithImages(
-        data || [],
-      ) as Product[];
-
-      setFeaturedProducts(productsWithSortedImages);
-    } catch (error) {
-      console.error("Error fetching featured products:", error);
-    }
-  };
-
-  const fetchNewProducts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          `
-          *,
-          category:categories(id, name),
-          images:product_images(id, url, alt_text, is_primary)
-        `,
-        )
-        .eq("is_active", true)
-        .gt("stock_quantity", 0)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
-      // Sort images to put primary first using utility function
-      const productsWithSortedImages = sortProductsWithImages(
-        data || [],
-      ) as Product[];
-
-      setNewProducts(productsWithSortedImages);
-    } catch (error) {
-      console.error("Error fetching new products:", error);
-    }
-  };
+  // Refetch all data on pull-to-refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      refetchPromotions(),
+      refetchCategories(),
+      refetchFeatured(),
+      refetchNew(),
+    ]);
+    setRefreshing(false);
+  }, [refetchPromotions, refetchCategories, refetchFeatured, refetchNew]);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -193,6 +124,20 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             onPress={() => (navigation as any).navigate("Search")}
           >
             <Ionicons name="search" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => (navigation as any).navigate("Cart")}
+          >
+            <Ionicons name="cart-outline" size={24} color={COLORS.text} />
+            {cartCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {cartCount > 99 ? "99+" : String(cartCount)}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -231,63 +176,85 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     </View>
   );
 
-  const renderPromotionCard = ({ item }: { item: Promotion }) => (
-    <TouchableOpacity
-      style={styles.promotionCard}
-      onPress={() =>
-        (navigation as any).navigate("PromotionDetails", {
-          promotionId: item.id,
-        })
-      }
-    >
-      {item.image_url ? (
-        <Image
-          source={{
-            uri: optimizeImageUrl(item.image_url, PROMOTION_CARD_WIDTH, 200),
-          }}
-          style={styles.promotionImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <LinearGradient
-          colors={[COLORS.primary, COLORS.secondary]}
-          style={styles.promotionImagePlaceholder}
-        >
-          <Ionicons name="pricetag" size={40} color={COLORS.white} />
-        </LinearGradient>
-      )}
+  const renderPromotionCard = ({ item }: { item: Promotion & { isActive?: boolean } }) => {
+    const now = new Date();
+    const startDate = new Date(item.start_date);
+    const isUpcoming = startDate > now;
 
-      <View style={styles.promotionContent}>
-        <View style={styles.promotionBadge}>
-          <Text style={styles.promotionBadgeText}>
-            {item.promotion_type === "percentage"
-              ? `${String(item.discount_value || 0)}% OFF`
-              : item.promotion_type === "fixed_amount"
-                ? `$${String(item.discount_value || 0)} OFF`
-                : item.promotion_type === "free_shipping"
-                  ? "FREE SHIPPING"
-                  : "SPECIAL OFFER"}
-          </Text>
-        </View>
-
-        <Text style={styles.promotionTitle}>{item.title}</Text>
-        <Text style={styles.promotionDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-
-        <Button
-          title="View Promotion"
-          onPress={() =>
+    // For upcoming promotions, use the PromotionCountdown component
+    if (isUpcoming) {
+      return (
+        <PromotionCountdown
+          promotion={item}
+          onPress={(promotion) =>
             (navigation as any).navigate("PromotionDetails", {
-              promotionId: item.id,
+              promotionId: promotion.id,
             })
           }
-          size="small"
-          style={styles.promotionButton}
         />
-      </View>
-    </TouchableOpacity>
-  );
+      );
+    }
+
+    // For active promotions, use the original card design
+    return (
+      <TouchableOpacity
+        style={styles.promotionCard}
+        onPress={() =>
+          (navigation as any).navigate("PromotionDetails", {
+            promotionId: item.id,
+          })
+        }
+      >
+        {item.image_url ? (
+          <OptimizedImage
+            uri={item.image_url}
+            width={PROMOTION_CARD_WIDTH}
+            height={200}
+            contentFit="cover"
+            style={styles.promotionImage}
+            priority="high"
+          />
+        ) : (
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.secondary]}
+            style={styles.promotionImagePlaceholder}
+          >
+            <Ionicons name="pricetag" size={40} color={COLORS.white} />
+          </LinearGradient>
+        )}
+
+        <View style={styles.promotionContent}>
+          <View style={styles.promotionBadge}>
+            <Text style={styles.promotionBadgeText}>
+              {item.promotion_type === "percentage"
+                ? `${String(item.discount_value || 0)}% OFF`
+                : item.promotion_type === "fixed_amount"
+                  ? `₱${String(item.discount_value || 0)} OFF`
+                  : item.promotion_type === "free_shipping"
+                    ? "FREE SHIPPING"
+                    : "SPECIAL OFFER"}
+            </Text>
+          </View>
+
+          <Text style={styles.promotionTitle}>{item.title}</Text>
+          <Text style={styles.promotionDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+
+          <Button
+            title="View Promotion"
+            onPress={() =>
+              (navigation as any).navigate("PromotionDetails", {
+                promotionId: item.id,
+              })
+            }
+            size="small"
+            style={styles.promotionButton}
+          />
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderCategoryCard = ({ item }: { item: Category }) => (
     <TouchableOpacity
@@ -299,23 +266,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         })
       }
     >
-      {item.image_url ? (
-        <Image
-          source={{
-            uri: optimizeImageUrl(
-              item.image_url,
-              CATEGORY_CARD_WIDTH,
-              CATEGORY_CARD_WIDTH,
-            ),
-          }}
-          style={styles.categoryImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={styles.categoryImagePlaceholder}>
-          <Ionicons name="grid-outline" size={32} color={COLORS.primary} />
-        </View>
-      )}
+      <View style={styles.categoryIconContainer}>
+        <Text style={styles.categoryIcon}>{getCategoryIcon(item.name)}</Text>
+      </View>
       <Text style={styles.categoryName} numberOfLines={2}>
         {item.name}
       </Text>
@@ -330,16 +283,13 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       }
     >
       {item.images && item.images.length > 0 ? (
-        <Image
-          source={{
-            uri: optimizeImageUrl(
-              item.images[0].url,
-              PRODUCT_CARD_WIDTH,
-              PRODUCT_CARD_WIDTH,
-            ),
-          }}
+        <OptimizedImage
+          uri={item.images[0].url}
+          width={PRODUCT_CARD_WIDTH}
+          height={PRODUCT_CARD_WIDTH}
+          contentFit="cover"
           style={styles.productImage}
-          resizeMode="cover"
+          priority="low"
         />
       ) : (
         <View style={styles.productImagePlaceholder}>
@@ -432,25 +382,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {renderHeader()}
 
         {/* Featured Promotions */}
-        {featuredPromotions.length > 0 && (
-          <FlatList
-            data={featuredPromotions}
-            renderItem={renderPromotionCard}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.promotionsList}
-            snapToInterval={PROMOTION_CARD_WIDTH + SPACING.md}
-            decelerationRate="fast"
-            keyExtractor={(item) => item.id}
-            style={styles.promotionsContainer}
-          />
-        )}
+        {featuredPromotions.length > 0 &&
+          renderSection("Promotions", featuredPromotions, renderPromotionCard, () =>
+            (navigation as any).navigate("Promotions"),
+          )}
 
         {/* Categories */}
         {categories.length > 0 &&
           renderSection("Categories", categories, renderCategoryCard, () =>
-            navigation.navigate("Catalog"),
+            navigation.navigate("Categories"),
           )}
 
         {/* Featured Products */}
@@ -636,20 +576,17 @@ const styles = StyleSheet.create({
     width: CATEGORY_CARD_WIDTH,
     alignItems: "center",
   },
-  categoryImage: {
+  categoryIconContainer: {
     width: CATEGORY_CARD_WIDTH - SPACING.md,
     height: CATEGORY_CARD_WIDTH - SPACING.md,
     borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.sm,
-  },
-  categoryImagePlaceholder: {
-    width: CATEGORY_CARD_WIDTH - SPACING.md,
-    height: CATEGORY_CARD_WIDTH - SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.primary + '20',
     justifyContent: "center",
     alignItems: "center",
     marginBottom: SPACING.sm,
+  },
+  categoryIcon: {
+    fontSize: 48,
   },
   categoryName: {
     ...TYPOGRAPHY.bodySmall,

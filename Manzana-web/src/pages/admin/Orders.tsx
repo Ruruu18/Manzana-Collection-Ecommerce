@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import "../../styles/dashboard-enhancement.css";
 
 interface Order {
   id: string;
+  order_number: string;
   total_amount: number;
   status: string;
   created_at: string;
@@ -19,7 +21,6 @@ interface Order {
     total_price: number;
     products: {
       name: string;
-      image_url?: string;
     };
   }[];
 }
@@ -43,12 +44,8 @@ export default function Orders() {
       const { data, error } = await supabase
         .from('orders')
         .select(`
-          id,
-          total_amount,
-          status,
-          created_at,
-          user_id,
-          users:user_id (
+          *,
+          users (
             full_name,
             email,
             phone
@@ -59,49 +56,27 @@ export default function Orders() {
             unit_price,
             total_price,
             products (
-              name,
-              image_url
+              name
             )
           )
         `)
         .order('created_at', { ascending: false });
 
+      console.log('🔍 Query error (if any):', error);
+      console.log('🔍 First order raw:', data?.[0]);
+
       if (error) {
-        console.error('Error loading orders:', error);
-        // Fallback to mock data
-        setOrders([
-          {
-            id: "1",
-            total_amount: 299.99,
-            status: "completed",
-            created_at: "2024-01-20T10:30:00Z",
-            user_id: "user1",
-            users: {
-              full_name: "John Doe",
-              email: "john@example.com",
-              phone: "555-0123"
-            },
-            order_items: [
-              {
-                id: "item1",
-                quantity: 2,
-                unit_price: 149.99,
-                total_price: 299.98,
-                products: {
-                  name: "Sample Product",
-                  image_url: "/images/sample.jpg"
-                }
-              }
-            ]
-          }
-        ]);
+        console.error('❌ Error loading orders:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        setOrders([]);
         return;
       }
 
+      console.log('✅ Raw data from Supabase:', data);
       setOrders(data || []);
       console.log(`📋 Loaded ${data?.length || 0} orders`);
     } catch (error) {
-      console.error('Failed to load orders:', error);
+      console.error('❌ Failed to load orders:', error);
       setOrders([]);
     } finally {
       setLoading(false);
@@ -142,30 +117,43 @@ export default function Orders() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-PH", {
       style: "currency",
-      currency: "USD",
+      currency: "PHP",
     }).format(amount);
   };
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
       pending: "warning",
-      processing: "info", 
-      shipped: "info",
-      completed: "success",
+      confirmed: "info",
+      processing: "info",
+      shipped: "success",
+      delivered: "success",
       cancelled: "danger",
     };
     return statusMap[status as keyof typeof statusMap] || "info";
   };
 
+  const getStatusLabel = (status: string) => {
+    const labelMap = {
+      pending: "Pending",
+      confirmed: "Confirmed",
+      processing: "Processing",
+      shipped: "Ready for Pickup",
+      delivered: "Picked Up",
+      cancelled: "Cancelled",
+    };
+    return labelMap[status as keyof typeof labelMap] || status;
+  };
+
   const filteredOrders = orders.filter(order => {
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       order.users?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toLowerCase().includes(searchTerm.toLowerCase());
-    
+      order.order_number?.toLowerCase().includes(searchTerm.toLowerCase());
+
     return matchesStatus && matchesSearch;
   });
 
@@ -217,9 +205,10 @@ export default function Orders() {
         >
           <option value="all">All Statuses</option>
           <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
           <option value="processing">Processing</option>
-          <option value="shipped">Shipped</option>
-          <option value="completed">Completed</option>
+          <option value="shipped">Ready for Pickup</option>
+          <option value="delivered">Picked Up</option>
           <option value="cancelled">Cancelled</option>
         </select>
       </div>
@@ -243,16 +232,16 @@ export default function Orders() {
               {filteredOrders.map((order) => (
                 <tr key={order.id}>
                   <td>
-                    <span 
+                    <span
                       className="order-id clickable"
                       onClick={() => setSelectedOrder(order)}
-                      style={{ 
-                        color: "var(--primary)", 
+                      style={{
+                        color: "var(--primary)",
                         cursor: "pointer",
                         textDecoration: "underline"
                       }}
                     >
-                      #{order.id.slice(-8)}
+                      #{order.order_number}
                     </span>
                   </td>
                   <td>
@@ -267,7 +256,7 @@ export default function Orders() {
                   </td>
                   <td>
                     <span style={{ color: "var(--muted)" }}>
-                      {order.order_items?.length || 0} items
+                      {order.order_items?.reduce((total, item) => total + item.quantity, 0) || 0} items
                     </span>
                   </td>
                   <td style={{ fontWeight: "var(--font-weight-semibold)" }}>
@@ -275,7 +264,7 @@ export default function Orders() {
                   </td>
                   <td>
                     <span className={`badge ${getStatusBadge(order.status)}`}>
-                      {order.status}
+                      {getStatusLabel(order.status)}
                     </span>
                   </td>
                   <td style={{ color: "var(--muted)", fontSize: "14px" }}>
@@ -292,25 +281,33 @@ export default function Orders() {
                       {order.status === "pending" && (
                         <button
                           className="btn btn-sm btn-info"
+                          onClick={() => updateOrderStatus(order.id, "confirmed")}
+                        >
+                          ✓ Confirm
+                        </button>
+                      )}
+                      {order.status === "confirmed" && (
+                        <button
+                          className="btn btn-sm btn-info"
                           onClick={() => updateOrderStatus(order.id, "processing")}
                         >
-                          ⚡ Process
+                          📦 Process
                         </button>
                       )}
                       {order.status === "processing" && (
                         <button
-                          className="btn btn-sm btn-info"
+                          className="btn btn-sm btn-success"
                           onClick={() => updateOrderStatus(order.id, "shipped")}
                         >
-                          🚚 Ship
+                          ✓ Ready for Pickup
                         </button>
                       )}
                       {order.status === "shipped" && (
                         <button
                           className="btn btn-sm btn-success"
-                          onClick={() => updateOrderStatus(order.id, "completed")}
+                          onClick={() => updateOrderStatus(order.id, "delivered")}
                         >
-                          ✅ Complete
+                          ✅ Picked Up
                         </button>
                       )}
                     </div>
@@ -334,8 +331,8 @@ export default function Orders() {
         <div className="modal-overlay" onClick={() => setSelectedOrder(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Order Details - #{selectedOrder.id.slice(-8)}</h3>
-              <button 
+              <h3>Order Details - #{selectedOrder.order_number}</h3>
+              <button
                 className="modal-close"
                 onClick={() => setSelectedOrder(null)}
               >
@@ -349,7 +346,7 @@ export default function Orders() {
                 <div className="summary-item">
                   <strong>Status:</strong>
                   <span className={`badge ${getStatusBadge(selectedOrder.status)}`}>
-                    {selectedOrder.status}
+                    {getStatusLabel(selectedOrder.status)}
                   </span>
                 </div>
                 <div className="summary-item">
@@ -395,45 +392,49 @@ export default function Orders() {
               </div>
 
               {/* Status Actions */}
-              <div className="section">
-                <h4>Update Status</h4>
-                <div className="status-actions">
-                  {selectedOrder.status !== "completed" && selectedOrder.status !== "cancelled" && (
-                    <>
-                      <button
-                        className="btn btn-warning"
-                        onClick={() => updateOrderStatus(selectedOrder.id, "pending")}
-                      >
-                        ⏳ Mark Pending
-                      </button>
-                      <button
-                        className="btn btn-info"
-                        onClick={() => updateOrderStatus(selectedOrder.id, "processing")}
-                      >
-                        ⚡ Mark Processing
-                      </button>
-                      <button
-                        className="btn btn-info"
-                        onClick={() => updateOrderStatus(selectedOrder.id, "shipped")}
-                      >
-                        🚚 Mark Shipped
-                      </button>
-                      <button
-                        className="btn btn-success"
-                        onClick={() => updateOrderStatus(selectedOrder.id, "completed")}
-                      >
-                        ✅ Mark Completed
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => updateOrderStatus(selectedOrder.id, "cancelled")}
-                      >
-                        ❌ Cancel Order
-                      </button>
-                    </>
-                  )}
+              {selectedOrder.status !== "delivered" && selectedOrder.status !== "cancelled" && (
+                <div className="section">
+                  <h4>Update Status</h4>
+                  <div className="status-actions">
+                    <button
+                      className="btn btn-warning"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "pending")}
+                    >
+                      ⏳ Mark Pending
+                    </button>
+                    <button
+                      className="btn btn-info"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "confirmed")}
+                    >
+                      ✓ Mark Confirmed
+                    </button>
+                    <button
+                      className="btn btn-info"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "processing")}
+                    >
+                      📦 Mark Processing
+                    </button>
+                    <button
+                      className="btn btn-success"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "shipped")}
+                    >
+                      ✓ Ready for Pickup
+                    </button>
+                    <button
+                      className="btn btn-success"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "delivered")}
+                    >
+                      ✅ Mark Picked Up
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => updateOrderStatus(selectedOrder.id, "cancelled")}
+                    >
+                      ❌ Cancel Order
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

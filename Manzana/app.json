@@ -8,27 +8,47 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/MANZANA-ICON.png",
       "resizeMode": "contain",
       "backgroundColor": "#D4587A"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.manzana.collection"
+      "bundleIdentifier": "com.manzana.collection",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.manzana.collection"
+      "package": "com.manzana.collection",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#D4587A",
+      "androidMode": "default",
+      "androidCollapsedTitle": "{{unread_count}} new notifications"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#D4587A",
+          "mode": "production"
+        }
+      ],
       "expo-image-picker",
       "expo-font"
     ],
@@ -37,6 +57,11 @@
       "ios",
       "android",
       "web"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
   }
 }

@@ -8,8 +8,10 @@ import {
   TextInput,
   RefreshControl,
   Modal,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../services/supabase";
 import { useAuth } from "../../../hooks/useAuth";
@@ -26,7 +28,7 @@ import {
   BORDER_RADIUS,
   PRODUCT_FILTERS,
 } from "../../../constants/theme";
-import { debounce } from "../../../utils";
+import { debounce, getCategoryIcon } from "../../../utils";
 import LoadingState from "../../../components/LoadingState";
 import ProductCard from "../../../components/ProductCard";
 import Button from "../../../components/Button";
@@ -41,15 +43,23 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<SearchFilters>({});
-  const [sortBy, setSortBy] = useState("newest");
+  const [sortBy, setSortBy] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const ITEMS_PER_PAGE = 20;
 
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Refresh wishlist states when screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      setRefreshKey(prev => prev + 1);
+    }, [])
+  );
 
   useEffect(() => {
     // Apply route params as initial filters
@@ -126,10 +136,11 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         query = query.eq("is_featured", true);
       }
 
-      // Apply search query
+      // Apply search query (search in name, category, and description)
       if (searchQuery.trim()) {
+        // Search in product name OR category name OR description
         query = query.or(
-          `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`,
+          `name.ilike.%${searchQuery}%,category.name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
         );
       }
 
@@ -213,10 +224,14 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
   const debouncedSearch = useCallback(
     debounce((query: string) => {
       setSearchQuery(query);
-      fetchProducts(true);
     }, 500),
-    [filters, sortBy],
+    [],
   );
+
+  // Trigger fetch when searchQuery changes
+  useEffect(() => {
+    fetchProducts(true);
+  }, [searchQuery, filters, sortBy]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -259,6 +274,8 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
             placeholderTextColor={COLORS.textSecondary}
             onChangeText={debouncedSearch}
             defaultValue={searchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
         <TouchableOpacity
@@ -269,7 +286,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Active Filters */}
+      {/* Active Filters - only show when filters are actually applied */}
       {(Object.keys(filters).length > 0 || searchQuery) && (
         <View style={styles.activeFilters}>
           <Text style={styles.activeFiltersText}>
@@ -290,6 +307,8 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         onPress={handleProductPress}
         showWishlist={true}
         showStockAlert={true}
+        userId={user?.id}
+        refreshKey={refreshKey}
       />
     </View>
   );
@@ -328,7 +347,10 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.modalContent}>
+        <ScrollView
+          style={styles.modalContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Sort By */}
           <View style={styles.filterSection}>
             <Text style={styles.filterTitle}>Sort by</Text>
@@ -389,7 +411,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
                       styles.filterOptionActive,
                   ]}
                 >
-                  {category.name}
+                  {getCategoryIcon(category.name)} {category.name}
                 </Text>
                 {filters.category === category.id && (
                   <Ionicons name="checkmark" size={20} color={COLORS.primary} />
@@ -509,7 +531,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
               </View>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
 
         <View style={styles.modalFooter}>
           <Button title="Apply filters" onPress={applyFilters} fullWidth />

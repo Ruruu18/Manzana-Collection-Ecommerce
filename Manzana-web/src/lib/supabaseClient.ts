@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined || 'https://enxdypnlbcltrjuepldk.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVueGR5cG5sYmNsdHJqdWVwbGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODA2NTIsImV4cCI6MjA3MTk1NjY1Mn0.7M37KV8MD6o9N3cxPw3etYbBfm_j1IU2lsLmZMz3viI'
+// Load from environment variables
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 // Check if we have valid Supabase credentials
 const hasValidCredentials = 
@@ -18,14 +19,14 @@ const forceRealClient = true
 const BYPASS_AUTH_FOR_DEVELOPMENT = false
 
 // Clear any cached invalid auth tokens from old URLs only on first setup
-const hasValidSession = localStorage.getItem('sb-enxdypnlbcltrjuepldk-auth-token')
+const hasValidSession = localStorage.getItem('sb-fuqsweradcynpbgarwoc-auth-token')
 if (!hasValidSession) {
   console.log('🧹 Clearing old cached auth tokens to prevent conflicts')
   // Clear tokens from old URLs only
   localStorage.removeItem('sb-mnnysiucgmhwuxyvxzyg-auth-token')
   // Clear other potential old supabase items but preserve current ones
   Object.keys(localStorage).forEach(key => {
-    if (key.includes('supabase') && !key.includes('enxdypnlbcltrjuepldk')) {
+    if (key.includes('supabase') && !key.includes('fuqsweradcynpbgarwoc')) {
       localStorage.removeItem(key)
     }
   })

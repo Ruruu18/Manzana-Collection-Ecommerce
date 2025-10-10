@@ -1,8 +1,30 @@
 import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { LogBox } from "react-native";
+import FlashMessage from "react-native-flash-message";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { AuthProvider } from "./src/hooks/useAuth";
 import { runAutoSetupCheck } from "./src/utils/autoSetupCheck";
+import ErrorBoundary from "./src/components/ErrorBoundary";
+
+// Create a client with optimized cache settings
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // Data is fresh for 5 minutes
+      gcTime: 10 * 60 * 1000, // Cached data is kept for 10 minutes
+      retry: 2,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+  },
+});
+
+// Ignore specific warnings
+LogBox.ignoreLogs([
+  'Non-serializable values were found in the navigation state',
+]);
 
 export default function App() {
   useEffect(() => {
@@ -15,10 +37,15 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <AppNavigator />
+            <FlashMessage position="top" />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

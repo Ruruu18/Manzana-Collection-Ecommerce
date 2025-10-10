@@ -39,7 +39,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
     address: "",
     city: "",
     state: "",
-    zipCode: "",
+    postalCode: "",
     businessName: "",
     taxId: "",
   });
@@ -68,8 +68,8 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         newErrors.address = "Address must be at least 10 characters long";
       }
 
-      if (form.zipCode && !/^\d{5}$/.test(form.zipCode)) {
-        newErrors.zipCode = "ZIP code must be 5 digits";
+      if (form.postalCode && !/^\d{4}$/.test(form.postalCode)) {
+        newErrors.postalCode = "Postal code must be 4 digits";
       }
     }
 
@@ -117,7 +117,7 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         address: form.address || null,
         city: form.city || null,
         state: form.state || null,
-        zip_code: form.zipCode || null,
+        postal_code: form.postalCode || null,
         avatar_url: avatarUri || user?.avatar_url,
       };
 
@@ -337,34 +337,34 @@ const ProfileSetupScreen: React.FC<ProfileSetupScreenProps> = ({
         </View>
       </View>
 
-      {/* Zip Code */}
+      {/* Postal Code */}
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>ZIP Code</Text>
+        <Text style={styles.label}>Postal Code</Text>
         <View
           style={[
             styles.inputWrapper,
-            errors.zipCode && styles.inputWrapperError,
+            errors.postalCode && styles.inputWrapperError,
           ]}
         >
           <Ionicons
             name="mail-outline"
             size={20}
-            color={errors.zipCode ? COLORS.error : COLORS.textSecondary}
+            color={errors.postalCode ? COLORS.error : COLORS.textSecondary}
             style={styles.inputIcon}
           />
           <TextInput
             style={styles.input}
-            value={form.zipCode}
-            onChangeText={(text) => updateForm("zipCode", text)}
-            placeholder="12345"
+            value={form.postalCode}
+            onChangeText={(text) => updateForm("postalCode", text)}
+            placeholder="1234"
             placeholderTextColor={COLORS.textSecondary}
             keyboardType="number-pad"
-            maxLength={5}
+            maxLength={4}
             editable={!loading}
           />
         </View>
-        {errors.zipCode && (
-          <Text style={styles.errorText}>{errors.zipCode}</Text>
+        {errors.postalCode && (
+          <Text style={styles.errorText}>{errors.postalCode}</Text>
         )}
       </View>
     </View>

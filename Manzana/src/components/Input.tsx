@@ -26,6 +26,7 @@ interface InputProps extends TextInputProps {
   containerStyle?: object;
   inputStyle?: object;
   showPasswordToggle?: boolean;
+  accessibilityHint?: string;
 }
 
 const Input = forwardRef<TextInput, InputProps>(
@@ -43,6 +44,7 @@ const Input = forwardRef<TextInput, InputProps>(
       showPasswordToggle = false,
       value,
       onChangeText,
+      accessibilityHint,
       ...rest
     },
     ref
@@ -60,7 +62,14 @@ const Input = forwardRef<TextInput, InputProps>(
 
     return (
       <View style={[styles.container, containerStyle]}>
-        {label && <Text style={styles.label}>{label}</Text>}
+        {label && (
+          <Text
+            style={styles.label}
+            accessibilityRole="header"
+          >
+            {label}
+          </Text>
+        )}
 
         <View
           style={[
@@ -91,11 +100,16 @@ const Input = forwardRef<TextInput, InputProps>(
             autoCapitalize="none"
             autoCorrect={false}
             underlineColorAndroid="transparent"
+            accessibilityLabel={label || placeholder}
+            accessibilityHint={accessibilityHint}
             {...rest}
             // Force-disable autofill for password fields regardless of caller props
             importantForAutofill={isPassword ? "no" : (rest.importantForAutofill as any) ?? "yes"}
-            textContentType={isPassword ? undefined : rest.textContentType}
+            textContentType={isPassword ? "none" : rest.textContentType}
             autoComplete={isPassword ? "off" : rest.autoComplete}
+            passwordRules={isPassword ? "" : undefined}
+            keyboardType={isPassword ? "default" : rest.keyboardType}
+            spellCheck={false}
           />
 
           {shouldShowEye && (
@@ -103,6 +117,8 @@ const Input = forwardRef<TextInput, InputProps>(
               style={styles.eyeIcon}
               onPress={togglePasswordVisibility}
               activeOpacity={0.7}
+              accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+              accessibilityRole="button"
             >
               <Ionicons
                 name={isPasswordVisible ? "eye-outline" : "eye-off-outline"}
@@ -151,7 +167,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
-    minHeight: 48,
+    height: 48,
   },
   inputWrapperFocused: {
     borderColor: COLORS.primary,
@@ -167,9 +183,9 @@ const styles = StyleSheet.create({
     flex: 1,
     ...TYPOGRAPHY.body,
     color: COLORS.text,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: 0,
-    textAlignVertical: "center",
+    padding: 0,
+    margin: 0,
+    lineHeight: 20,
     includeFontPadding: false,
   },
   eyeIcon: {

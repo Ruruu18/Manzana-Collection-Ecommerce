@@ -11,7 +11,7 @@ export const checkNetworkConnectivity = async (): Promise<boolean> => {
     // Try to fetch a simple endpoint
     const response = await fetch('https://httpbin.org/get', {
       method: 'GET',
-      timeout: 5000,
+      signal: AbortSignal.timeout(5000),
     });
     return response.ok;
   } catch (error) {
@@ -96,16 +96,21 @@ export const runNetworkDiagnostics = async () => {
 
   // Test 3: Supabase reachability
   try {
-    const response = await fetch('https://enxdypnlbcltrjuepldk.supabase.co/rest/v1/', {
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1cXN3ZXJhZGN5bnBiZ2Fyd29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTQ2MzcsImV4cCI6MjA3MzE3MDYzN30.bEUieVgxnM1xaBgMaj8AM07vSbdKP_Ti_pWKUGULXzI';
+    
+    const response = await fetch('https://fuqsweradcynpbgarwoc.supabase.co/rest/v1/', {
       method: 'GET',
       headers: {
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVueGR5cG5sYmNsdHJqdWVwbGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODA2NTIsImV4cCI6MjA3MTk1NjY1Mn0.7M37KV8MD6o9N3cxPw3etYbBfm_j1IU2lsLmZMz3viI',
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
       // @ts-ignore
       timeout: 5000,
     });
     results.supabaseReachable = response.ok;
-    console.log('✅ Supabase reachable:', results.supabaseReachable);
+    console.log('✅ Supabase reachable:', results.supabaseReachable, 'Status:', response.status);
   } catch (error) {
     console.log('❌ Supabase not reachable:', error);
   }

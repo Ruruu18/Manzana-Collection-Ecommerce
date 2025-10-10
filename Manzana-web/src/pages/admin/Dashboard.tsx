@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
+import "../../styles/dashboard-enhancement.css";
 
 interface DashboardStats {
   totalSales: number;
@@ -46,6 +47,16 @@ export default function Dashboard() {
   const [staffCount, setStaffCount] = useState(0);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
+  const [monthlySales, setMonthlySales] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const [orderStatusData, setOrderStatusData] = useState({
+    delivered: 0,
+    pending: 0,
+    confirmed: 0,
+    processing: 0,
+    shipped: 0,
+    cancelled: 0,
+    total: 0
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -67,9 +78,7 @@ export default function Dashboard() {
 
       if (error) {
         console.error('Error loading recent orders:', error);
-        setRecentOrders([
-          { id: "1", customer: "Sample Customer", amount: 299.99, status: "completed", date: "2024-01-20" }
-        ]);
+        setRecentOrders([]);
         return;
       }
 
@@ -84,9 +93,7 @@ export default function Dashboard() {
       setRecentOrders(formattedOrders);
     } catch (error) {
       console.error('Failed to load recent orders:', error);
-      setRecentOrders([
-        { id: "1", customer: "Sample Customer", amount: 299.99, status: "completed", date: "2024-01-20" }
-      ]);
+      setRecentOrders([]);
     }
   };
 
@@ -110,9 +117,7 @@ export default function Dashboard() {
 
       if (error) {
         console.error('Error loading top products:', error);
-        setTopProducts([
-          { id: "1", name: "Sample Product", sales: 10, revenue: 500 }
-        ]);
+        setTopProducts([]);
         return;
       }
 
@@ -120,7 +125,7 @@ export default function Dashboard() {
       const productStats = (data || []).map((product: any) => {
         const sales = product.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
         const revenue = product.order_items?.reduce((sum: number, item: any) => sum + (parseFloat(item.total_price) || 0), 0) || 0;
-        
+
         return {
           id: product.id,
           name: product.name,
@@ -137,19 +142,17 @@ export default function Dashboard() {
       setTopProducts(topPerformers);
     } catch (error) {
       console.error('Failed to load top products:', error);
-      setTopProducts([
-        { id: "1", name: "Sample Product", sales: 10, revenue: 500 }
-      ]);
+      setTopProducts([]);
     }
   };
 
   const loadDashboardData = async () => {
     try {
       console.log('📊 Loading dashboard data...');
-      
+
       // Load real data from Supabase with proper error handling
       const promises = [
-        supabase.from('orders').select('total_amount, created_at', { count: 'exact' }),
+        supabase.from('orders').select('total_amount, created_at, status', { count: 'exact' }),
         supabase.from('products').select('id, price', { count: 'exact' }).eq('is_active', true),
         supabase.from('users').select('id', { count: 'exact' }).in('user_type', ['consumer', 'reseller'])
       ];
@@ -174,20 +177,83 @@ export default function Dashboard() {
         return sum + (parseFloat(order.total_amount) || 0);
       }, 0) || 0;
 
-      // Calculate inventory value from products (not used but calculated for future use)
-      // const _inventoryValue = productsResult.data?.reduce((sum: number, product: any) => {
-      //   return sum + (parseFloat(product.price) || 0);
-      // }, 0) || 0;
-      
+      // Calculate monthly sales data
+      const currentYear = new Date().getFullYear();
+      const salesByMonth = new Array(12).fill(0);
+
+      ordersResult.data?.forEach((order: any) => {
+        const orderDate = new Date(order.created_at);
+        if (orderDate.getFullYear() === currentYear) {
+          const month = orderDate.getMonth();
+          salesByMonth[month] += parseFloat(order.total_amount) || 0;
+        }
+      });
+
+      setMonthlySales(salesByMonth);
+
+      // Calculate order status distribution
+      const statusCounts = {
+        delivered: 0,
+        pending: 0,
+        confirmed: 0,
+        processing: 0,
+        shipped: 0,
+        cancelled: 0,
+        total: ordersResult.data?.length || 0
+      };
+
+      ordersResult.data?.forEach((order: any) => {
+        const status = order.status?.toLowerCase() || 'pending';
+        if (status in statusCounts) {
+          statusCounts[status as keyof typeof statusCounts]++;
+        }
+      });
+
+      setOrderStatusData(statusCounts);
+
+      // Calculate growth percentages by comparing this month vs last month
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const lastMonthYear = currentMonth === 0 ? thisYear - 1 : thisYear;
+
+      // Current month data
+      const currentMonthOrders = ordersResult.data?.filter((order: any) => {
+        const date = new Date(order.created_at);
+        return date.getMonth() === currentMonth && date.getFullYear() === thisYear;
+      }) || [];
+
+      const currentMonthSales = currentMonthOrders.reduce((sum: number, order: any) =>
+        sum + (parseFloat(order.total_amount) || 0), 0);
+
+      // Last month data
+      const lastMonthOrders = ordersResult.data?.filter((order: any) => {
+        const date = new Date(order.created_at);
+        return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear;
+      }) || [];
+
+      const lastMonthSales = lastMonthOrders.reduce((sum: number, order: any) =>
+        sum + (parseFloat(order.total_amount) || 0), 0);
+
+      // Calculate growth percentages
+      const salesGrowth = lastMonthSales > 0
+        ? Number((((currentMonthSales - lastMonthSales) / lastMonthSales) * 100).toFixed(1))
+        : 0;
+
+      const ordersGrowth = lastMonthOrders.length > 0
+        ? Number((((currentMonthOrders.length - lastMonthOrders.length) / lastMonthOrders.length) * 100).toFixed(1))
+        : 0;
+
       const newStats = {
         totalSales,
         totalOrders: ordersResult.count || 0,
         totalProducts: productsResult.count || 0,
         totalCustomers: customersResult.count || 0,
-        salesGrowth: 12.5, // TODO: Calculate actual growth from historical data
-        ordersGrowth: 8.3,
-        productsGrowth: 15.2,
-        customersGrowth: 6.7,
+        salesGrowth,
+        ordersGrowth,
+        productsGrowth: 0, // No historical data for products
+        customersGrowth: 0, // No historical data for customers
       };
 
       setStats(newStats);
@@ -206,42 +272,31 @@ export default function Dashboard() {
       setLoading(false);
     } catch (error) {
       console.error("📊 Failed to load dashboard data:", error);
-      
-      // Fallback to realistic mock data
-      const mockStats = {
-        totalSales: 45847.50,
-        totalOrders: 127,
-        totalProducts: 0, // Will show real count even in mock mode
-        totalCustomers: 89,
-        salesGrowth: 12.5,
-        ordersGrowth: 8.3,
-        productsGrowth: 15.2,
-        customersGrowth: 6.7,
-      };
 
-      // Try to get at least product count in fallback
-      try {
-        const { count } = await supabase.from('products').select('id', { count: 'exact' });
-        mockStats.totalProducts = count || 0;
-      } catch (productError) {
-        console.error("Could not fetch product count:", productError);
-        mockStats.totalProducts = 5; // Fallback number
-      }
+      // Set empty stats on error - show real data only
+      setStats({
+        totalSales: 0,
+        totalOrders: 0,
+        totalProducts: 0,
+        totalCustomers: 0,
+        salesGrowth: 0,
+        ordersGrowth: 0,
+        productsGrowth: 0,
+        customersGrowth: 0,
+      });
 
-      setStats(mockStats);
-      
-      // Load fallback data for recent orders and top products
+      // Still try to load orders and products
       await loadRecentOrders();
       await loadTopProducts();
-      
+
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-PH", {
       style: "currency",
-      currency: "USD",
+      currency: "PHP",
     }).format(amount);
   };
 
@@ -251,9 +306,11 @@ export default function Dashboard() {
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      completed: "success",
+      delivered: "success",
       pending: "warning",
-      shipped: "info",
+      confirmed: "info",
+      processing: "info",
+      shipped: "success",
       cancelled: "danger",
     };
     return statusMap[status as keyof typeof statusMap] || "info";
@@ -283,16 +340,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="dashboard-actions">
-          <button className="btn btn-secondary">📊 Export Report</button>
-          <button 
-            className="btn btn-primary"
-            onClick={() => navigate('/admin/products')}
-          >
-            ➕ Add Product
-          </button>
-          {isAdmin && (
-            <button className="btn btn-success">👥 Manage Staff</button>
-          )}
+          {/* Quick actions moved to bottom section */}
         </div>
       </div>
 
@@ -309,13 +357,20 @@ export default function Dashboard() {
             </h3>
           </div>
           <div className="metric-value">{formatCurrency(stats.totalSales)}</div>
-          <div
-            className={`metric-change ${stats.salesGrowth > 0 ? "positive" : "negative"}`}
-          >
-            <span>{stats.salesGrowth > 0 ? "📈" : "📉"}</span>
-            {stats.salesGrowth > 0 ? "+" : ""}
-            {stats.salesGrowth}% from last month
-          </div>
+          {stats.salesGrowth !== 0 ? (
+            <div
+              className={`metric-change ${stats.salesGrowth > 0 ? "positive" : "negative"}`}
+            >
+              <span>{stats.salesGrowth > 0 ? "📈" : "📉"}</span>
+              {stats.salesGrowth > 0 ? "+" : ""}
+              {stats.salesGrowth}% from last month
+            </div>
+          ) : (
+            <div className="metric-change neutral">
+              <span>📊</span>
+              No comparison data
+            </div>
+          )}
         </div>
 
         <div className="metric-card info">
@@ -326,13 +381,20 @@ export default function Dashboard() {
             </h3>
           </div>
           <div className="metric-value">{formatNumber(stats.totalOrders)}</div>
-          <div
-            className={`metric-change ${stats.ordersGrowth > 0 ? "positive" : "negative"}`}
-          >
-            <span>{stats.ordersGrowth > 0 ? "📈" : "📉"}</span>
-            {stats.ordersGrowth > 0 ? "+" : ""}
-            {stats.ordersGrowth}% from last month
-          </div>
+          {stats.ordersGrowth !== 0 ? (
+            <div
+              className={`metric-change ${stats.ordersGrowth > 0 ? "positive" : "negative"}`}
+            >
+              <span>{stats.ordersGrowth > 0 ? "📈" : "📉"}</span>
+              {stats.ordersGrowth > 0 ? "+" : ""}
+              {stats.ordersGrowth}% from last month
+            </div>
+          ) : (
+            <div className="metric-change neutral">
+              <span>📊</span>
+              No comparison data
+            </div>
+          )}
         </div>
 
         <div className="metric-card warning">
@@ -345,12 +407,9 @@ export default function Dashboard() {
           <div className="metric-value">
             {formatNumber(stats.totalProducts)}
           </div>
-          <div
-            className={`metric-change ${stats.productsGrowth > 0 ? "positive" : "negative"}`}
-          >
-            <span>{stats.productsGrowth > 0 ? "📈" : "📉"}</span>
-            {stats.productsGrowth > 0 ? "+" : ""}
-            {stats.productsGrowth}% from last month
+          <div className="metric-change neutral">
+            <span>📦</span>
+            Active products
           </div>
         </div>
 
@@ -364,12 +423,9 @@ export default function Dashboard() {
           <div className="metric-value">
             {formatNumber(stats.totalCustomers)}
           </div>
-          <div
-            className={`metric-change ${stats.customersGrowth > 0 ? "positive" : "negative"}`}
-          >
-            <span>{stats.customersGrowth > 0 ? "📈" : "📉"}</span>
-            {stats.customersGrowth > 0 ? "+" : ""}
-            {stats.customersGrowth}% from last month
+          <div className="metric-change neutral">
+            <span>👥</span>
+            Registered users
           </div>
         </div>
 
@@ -399,178 +455,356 @@ export default function Dashboard() {
         style={{ marginBottom: "var(--spacing-lg)" }}
       >
         <div className="card" style={{ gridColumn: "span 2" }}>
-          <h3>Sales Overview</h3>
+          <h3>Sales Overview (Current Year)</h3>
           <div className="chart-container">
-            <div className="bars">
-              <div className="bar">
-                <div className="fill" style={{ height: "60%" }} />
+            {monthlySales.every(val => val === 0) ? (
+              <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)" }}>
+                <div style={{ fontSize: "48px", marginBottom: "12px" }}>📊</div>
+                <div>No sales data yet for this year</div>
               </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "45%" }} />
+            ) : (
+              <div style={{
+                padding: '30px 20px',
+                perspective: '1000px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'space-around',
+                  height: '300px',
+                  gap: '8px',
+                  transformStyle: 'preserve-3d',
+                  transform: 'rotateX(5deg)'
+                }}>
+                  {monthlySales.map((sales, index) => {
+                    const maxSales = Math.max(...monthlySales, 1);
+                    const heightPercent = (sales / maxSales) * 100;
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+                    // Color gradient from blue to cyan
+                    const colors = [
+                      '#3b82f6', '#60a5fa', '#38bdf8', '#22d3ee',
+                      '#14b8a6', '#10b981', '#34d399', '#6ee7b7',
+                      '#5eead4', '#2dd4bf', '#22d3ee', '#06b6d4'
+                    ];
+
+                    return (
+                      <div
+                        key={index}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* Value label on top */}
+                        {sales > 0 && (
+                          <div style={{
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            color: '#374151',
+                            marginBottom: '8px',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {formatNumber(Math.round(sales))}
+                          </div>
+                        )}
+
+                        {/* 3D Bar */}
+                        <div style={{
+                          width: '100%',
+                          height: `${heightPercent}%`,
+                          position: 'relative',
+                          transformStyle: 'preserve-3d',
+                          transform: 'translateZ(0)',
+                          minHeight: sales > 0 ? '30px' : '0'
+                        }}>
+                          {/* Front face */}
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: `linear-gradient(180deg, ${colors[index]} 0%, ${colors[index]}dd 100%)`,
+                            borderRadius: '4px 4px 0 0',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                          }} />
+
+                          {/* Top face */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '-6px',
+                            left: '50%',
+                            transform: 'translateX(-50%) rotateX(90deg) translateZ(3px)',
+                            width: '100%',
+                            height: '12px',
+                            background: `linear-gradient(90deg, ${colors[index]}ee 0%, ${colors[index]} 100%)`,
+                            borderRadius: '4px',
+                            transformOrigin: 'bottom center'
+                          }} />
+
+                          {/* Side face */}
+                          <div style={{
+                            position: 'absolute',
+                            top: 0,
+                            right: '-4px',
+                            bottom: 0,
+                            width: '8px',
+                            background: `linear-gradient(90deg, ${colors[index]}88 0%, ${colors[index]}66 100%)`,
+                            borderRadius: '0 4px 0 0',
+                            transform: 'rotateY(10deg)',
+                            transformOrigin: 'left center'
+                          }} />
+                        </div>
+
+                        {/* Month label */}
+                        <div style={{
+                          fontSize: '11px',
+                          color: '#6b7280',
+                          marginTop: '12px',
+                          fontWeight: '500'
+                        }}>
+                          {months[index]}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "80%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "65%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "90%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "75%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "95%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "85%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "70%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "88%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "92%" }} />
-              </div>
-              <div className="bar">
-                <div className="fill" style={{ height: "78%" }} />
-              </div>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "0 var(--spacing)",
-                fontSize: "12px",
-                color: "var(--muted)",
-                marginTop: "var(--spacing-sm)",
-              }}
-            >
-              <span>Jan</span>
-              <span>Feb</span>
-              <span>Mar</span>
-              <span>Apr</span>
-              <span>May</span>
-              <span>Jun</span>
-              <span>Jul</span>
-              <span>Aug</span>
-              <span>Sep</span>
-              <span>Oct</span>
-              <span>Nov</span>
-              <span>Dec</span>
-            </div>
+            )}
           </div>
         </div>
 
         <div className="card">
           <h3>Order Status</h3>
-          <div className="donut-container">
-            <div className="donut" data-label="1,284" />
-          </div>
-          <div style={{ marginTop: "var(--spacing)" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "var(--spacing-sm)",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--spacing-sm)",
-                }}
-              >
+          {orderStatusData.total === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)" }}>
+              <div style={{ fontSize: "48px", marginBottom: "12px" }}>📊</div>
+              <div>No orders to display</div>
+            </div>
+          ) : (
+            <>
+              <div className="donut-container">
+                <div
+                  className="donut"
+                  data-label={formatNumber(orderStatusData.total)}
+                  style={{
+                    background: `conic-gradient(
+                      #10b981 0 ${(orderStatusData.delivered / orderStatusData.total) * 100}%,
+                      #f59e0b ${(orderStatusData.delivered / orderStatusData.total) * 100}% ${((orderStatusData.delivered + orderStatusData.pending) / orderStatusData.total) * 100}%,
+                      #06b6d4 ${((orderStatusData.delivered + orderStatusData.pending) / orderStatusData.total) * 100}% ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed) / orderStatusData.total) * 100}%,
+                      #8b5cf6 ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed) / orderStatusData.total) * 100}% ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed + orderStatusData.processing) / orderStatusData.total) * 100}%,
+                      #ec4899 ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed + orderStatusData.processing) / orderStatusData.total) * 100}% ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed + orderStatusData.processing + orderStatusData.shipped) / orderStatusData.total) * 100}%,
+                      #ef4444 ${((orderStatusData.delivered + orderStatusData.pending + orderStatusData.confirmed + orderStatusData.processing + orderStatusData.shipped) / orderStatusData.total) * 100}% 100%
+                    )`
+                  }}
+                />
+              </div>
+              <div style={{ marginTop: "var(--spacing)" }}>
                 <div
                   style={{
-                    width: 12,
-                    height: 12,
-                    backgroundColor: "var(--primary)",
-                    borderRadius: "2px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
                   }}
-                ></div>
-                <span style={{ fontSize: "14px" }}>Completed</span>
-              </span>
-              <span
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "var(--font-weight-semibold)",
-                }}
-              >
-                65%
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "var(--spacing-sm)",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--spacing-sm)",
-                }}
-              >
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#10b981",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Picked Up</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.delivered / orderStatusData.total) * 100) : 0}% ({orderStatusData.delivered})
+                  </span>
+                </div>
                 <div
                   style={{
-                    width: 12,
-                    height: 12,
-                    backgroundColor: "var(--warning)",
-                    borderRadius: "2px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
                   }}
-                ></div>
-                <span style={{ fontSize: "14px" }}>Pending</span>
-              </span>
-              <span
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "var(--font-weight-semibold)",
-                }}
-              >
-                20%
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "var(--spacing-sm)",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--spacing-sm)",
-                }}
-              >
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#f59e0b",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Pending</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.pending / orderStatusData.total) * 100) : 0}% ({orderStatusData.pending})
+                  </span>
+                </div>
                 <div
                   style={{
-                    width: 12,
-                    height: 12,
-                    backgroundColor: "var(--info)",
-                    borderRadius: "2px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
                   }}
-                ></div>
-                <span style={{ fontSize: "14px" }}>Shipped</span>
-              </span>
-              <span
-                style={{
-                  fontSize: "14px",
-                  fontWeight: "var(--font-weight-semibold)",
-                }}
-              >
-                15%
-              </span>
-            </div>
-          </div>
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#06b6d4",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Confirmed</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.confirmed / orderStatusData.total) * 100) : 0}% ({orderStatusData.confirmed})
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#8b5cf6",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Processing</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.processing / orderStatusData.total) * 100) : 0}% ({orderStatusData.processing})
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#ec4899",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Ready for Pickup</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.shipped / orderStatusData.total) * 100) : 0}% ({orderStatusData.shipped})
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "var(--spacing-sm)",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--spacing-sm)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#ef4444",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "14px" }}>Cancelled</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "var(--font-weight-semibold)",
+                    }}
+                  >
+                    {orderStatusData.total > 0 ? Math.round((orderStatusData.cancelled / orderStatusData.total) * 100) : 0}% ({orderStatusData.cancelled})
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -606,24 +840,33 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td style={{ fontWeight: "var(--font-weight-medium)" }}>
-                      {order.customer}
-                    </td>
-                    <td style={{ fontWeight: "var(--font-weight-semibold)" }}>
-                      {formatCurrency(order.amount)}
-                    </td>
-                    <td>
-                      <span className={`badge ${getStatusBadge(order.status)}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td style={{ color: "var(--muted)", fontSize: "14px" }}>
-                      {new Date(order.date).toLocaleDateString()}
+                {recentOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
+                      <div style={{ fontSize: "48px", marginBottom: "12px" }}>📋</div>
+                      <div>No orders yet</div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  recentOrders.map((order) => (
+                    <tr key={order.id}>
+                      <td style={{ fontWeight: "var(--font-weight-medium)" }}>
+                        {order.customer}
+                      </td>
+                      <td style={{ fontWeight: "var(--font-weight-semibold)" }}>
+                        {formatCurrency(order.amount)}
+                      </td>
+                      <td>
+                        <span className={`badge ${getStatusBadge(order.status)}`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td style={{ color: "var(--muted)", fontSize: "14px" }}>
+                        {new Date(order.date).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -658,26 +901,35 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {topProducts.map((product) => (
-                  <tr key={product.id}>
-                    <td style={{ fontWeight: "var(--font-weight-medium)" }}>
-                      {product.name}
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          color: "var(--success)",
-                          fontWeight: "var(--font-weight-semibold)",
-                        }}
-                      >
-                        {formatNumber(product.sales)}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: "var(--font-weight-semibold)" }}>
-                      {formatCurrency(product.revenue)}
+                {topProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
+                      <div style={{ fontSize: "48px", marginBottom: "12px" }}>📦</div>
+                      <div>No product sales yet</div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  topProducts.map((product) => (
+                    <tr key={product.id}>
+                      <td style={{ fontWeight: "var(--font-weight-medium)" }}>
+                        {product.name}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            color: "var(--success)",
+                            fontWeight: "var(--font-weight-semibold)",
+                          }}
+                        >
+                          {formatNumber(product.sales)}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: "var(--font-weight-semibold)" }}>
+                        {formatCurrency(product.revenue)}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -687,7 +939,7 @@ export default function Dashboard() {
       {/* Quick Actions */}
       <div className="card" style={{ marginTop: "var(--spacing-lg)" }}>
         <h3>Quick Actions</h3>
-        <div className={`grid ${isAdmin ? 'cols-5' : 'cols-4'}`} style={{ marginTop: "var(--spacing)" }}>
+        <div className={`grid ${isAdmin ? 'cols-5' : 'cols-3'}`} style={{ marginTop: "var(--spacing)" }}>
           <button
             className="btn btn-secondary"
             onClick={() => navigate('/admin/products')}
@@ -718,7 +970,7 @@ export default function Dashboard() {
           </button>
           <button
             className="btn btn-secondary"
-            onClick={() => navigate('/admin/customers')}
+            onClick={() => navigate('/admin/categories')}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -727,37 +979,40 @@ export default function Dashboard() {
               padding: "var(--spacing-lg)",
             }}
           >
-            <span style={{ fontSize: "24px" }}>👥</span>
-            <span>Manage Customers</span>
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate('/admin/promotions')}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "var(--spacing-sm)",
-              padding: "var(--spacing-lg)",
-            }}
-          >
-            <span style={{ fontSize: "24px" }}>🏷️</span>
-            <span>Manage Promotions</span>
+            <span style={{ fontSize: "24px" }}>📂</span>
+            <span>Manage Categories</span>
           </button>
           {isAdmin && (
-            <button
-              className="btn btn-success"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "var(--spacing-sm)",
-                padding: "var(--spacing-lg)",
-              }}
-            >
-              <span style={{ fontSize: "24px" }}>👨‍💼</span>
-              <span>Manage Staff</span>
-            </button>
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate('/admin/customers')}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "var(--spacing-sm)",
+                  padding: "var(--spacing-lg)",
+                }}
+              >
+                <span style={{ fontSize: "24px" }}>👥</span>
+                <span>Manage Customers</span>
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate('/admin/staff')}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "var(--spacing-sm)",
+                  padding: "var(--spacing-lg)",
+                }}
+              >
+                <span style={{ fontSize: "24px" }}>👨‍💼</span>
+                <span>Manage Staff</span>
+              </button>
+            </>
           )}
         </div>
       </div>

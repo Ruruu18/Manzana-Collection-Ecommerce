@@ -34,6 +34,8 @@ interface Notification {
     product_id?: string;
     promotion_id?: string;
     order_id?: string;
+    orderId?: string;
+    orderNumber?: string;
     image_url?: string;
     action_url?: string;
   };
@@ -71,11 +73,17 @@ const NotificationDetailsScreen: React.FC<NotificationDetailsScreenProps> = ({
         .single();
 
       if (error) throw error;
+
+      console.log('📧 Notification loaded:', data);
+      console.log('📧 Is read:', data.is_read);
+
       setNotification(data);
 
       // Mark as read if not already read
       if (!data.is_read) {
-        await markAsRead();
+        console.log('📧 Marking notification as read...');
+        const result = await markAsRead();
+        console.log('📧 Mark as read result:', result);
       }
     } catch (error) {
       console.error("Error loading notification details:", error);
@@ -87,31 +95,57 @@ const NotificationDetailsScreen: React.FC<NotificationDetailsScreenProps> = ({
 
   const markAsRead = async () => {
     try {
-      await supabase
+      const { data, error } = await supabase
         .from("notifications")
         .update({ is_read: true })
-        .eq("id", notificationId);
+        .eq("id", notificationId)
+        .select();
+
+      if (error) {
+        console.error("❌ Error marking notification as read:", error);
+        throw error;
+      }
+
+      console.log('✅ Successfully marked as read:', data);
+      return { data, error: null };
     } catch (error) {
-      console.error("Error marking notification as read:", error);
+      console.error("❌ Error marking notification as read:", error);
+      return { data: null, error };
     }
   };
 
   const handleAction = () => {
     if (!notification?.data) return;
 
-    const { product_id, promotion_id, order_id, action_url } =
+    const { product_id, promotion_id, order_id, orderId, orderNumber, action_url } =
       notification.data;
 
-    if (product_id) {
+    // Handle order navigation - check for both order_id and orderId
+    const orderIdToUse = order_id || orderId;
+
+    if (orderIdToUse) {
+      navigation.navigate("OrderDetails", { orderId: orderIdToUse });
+    } else if (product_id) {
       navigation.navigate("ProductDetails", { productId: product_id });
     } else if (promotion_id) {
       navigation.navigate("PromotionDetails", { promotionId: promotion_id });
-    } else if (order_id) {
-      // navigation.navigate('OrderDetails', { orderId: order_id });
-      Alert.alert("Information", "Order details functionality coming soon");
     } else if (action_url) {
-      // Handle custom action URL
-      Alert.alert("Information", "Redirecting...");
+      // Parse action_url to navigate appropriately
+      if (action_url.includes("/orders/")) {
+        const orderId = action_url.split("/orders/")[1];
+        navigation.navigate("OrderDetails", { orderId });
+      } else if (action_url.includes("/admin/orders/")) {
+        const orderId = action_url.split("/admin/orders/")[1];
+        navigation.navigate("OrderDetails", { orderId });
+      } else if (action_url.includes("/product/")) {
+        const productId = action_url.split("/product/")[1];
+        navigation.navigate("ProductDetails", { productId });
+      } else if (action_url.includes("/promotion/")) {
+        const promotionId = action_url.split("/promotion/")[1];
+        navigation.navigate("PromotionDetails", { promotionId });
+      } else {
+        Alert.alert("Information", "Unable to navigate to this content");
+      }
     }
   };
 

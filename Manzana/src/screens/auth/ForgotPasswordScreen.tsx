@@ -50,18 +50,31 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
   };
 
   const handleResetPassword = async () => {
-    if (!validateForm()) return;
+    console.log("🔐 [ForgotPassword] Starting password reset flow...");
+    console.log("📧 [ForgotPassword] Email entered:", email);
+
+    if (!validateForm()) {
+      console.log("❌ [ForgotPassword] Validation failed");
+      return;
+    }
+
+    console.log("✅ [ForgotPassword] Validation passed");
 
     try {
+      console.log("📤 [ForgotPassword] Calling resetPassword() from useAuth...");
       const { error } = await resetPassword(email);
 
       if (error) {
+        console.error("❌ [ForgotPassword] Error returned:", error);
         Alert.alert("Error", error);
         return;
       }
 
+      console.log("✅ [ForgotPassword] Reset email sent successfully!");
+      console.log("📬 [ForgotPassword] User should check their inbox:", email);
       setSent(true);
     } catch (error) {
+      console.error("💥 [ForgotPassword] Unexpected error:", error);
       Alert.alert("Error", "An unexpected error occurred");
     }
   };
@@ -166,7 +179,7 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
                   style={styles.input}
                   value={email}
                   onChangeText={handleEmailChange}
-                  placeholder="tu@email.com"
+                  placeholder="Enter your email here"
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"

@@ -23,81 +23,79 @@ export const useAuthProvider = (): AuthContextType => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fetchingProfile, setFetchingProfile] = useState(false);
-  const [profileCreationAttempts, setProfileCreationAttempts] = useState<{[key: string]: number}>({});
 
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
       try {
-        console.log("🔄 Getting initial session...");
-
         const {
           data: { session },
         } = await supabase.auth.getSession();
-        
-        console.log("✅ Session retrieved:", session ? "Found" : "None");
+
         setSession(session);
 
         if (session?.user?.id) {
+          // Validate session hasn't expired
+          const expiresAt = session.expires_at;
+          const now = Math.floor(Date.now() / 1000);
+
+          if (expiresAt && expiresAt < now) {
+            // Session expired, clear it
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            return;
+          }
+
           await fetchUserProfile(session.user.id);
         } else {
-          console.log("⚠️ No valid session or user ID found, clearing state");
           setUser(null);
           setSession(null);
         }
 
       } catch (error: any) {
-        console.error("❌ Error getting initial session:", error.message);
-        
+
         // If we get a refresh token error, clear the stored session
-        if (error.message?.includes('Invalid Refresh Token') || 
+        if (error.message?.includes('Invalid Refresh Token') ||
             error.message?.includes('Refresh Token Not Found')) {
-          console.log("🔄 Clearing invalid session...");
           try {
             await clearCorruptedSession();
             await supabase.auth.signOut();
             setSession(null);
             setUser(null);
           } catch (signOutError) {
-            console.error("❌ Error signing out:", signOutError);
+            // Silent error
           }
         }
       } finally {
-        console.log("✅ Initial session check complete, setting loading to false");
         setLoading(false);
       }
     };
 
     getInitialSession();
 
-    // Timeout to prevent infinite loading
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log("⏰ Auth timeout reached, forcing loading to false");
-        setLoading(false);
-      }
-    }, 8000); // 8 second timeout
-
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
-      console.log("🔄 Auth state change:", event, session ? "Session exists" : "No session");
-      console.log("🔍 Session details:", {
-        hasSession: !!session,
-        userId: session?.user?.id,
-        userEmail: session?.user?.email,
-        event: event
-      });
 
       setSession(session);
 
       if (session?.user?.id) {
-        console.log("🔄 About to fetch profile for user:", session.user.id);
+        // Validate session on auth state change
+        const expiresAt = session.expires_at;
+        const now = Math.floor(Date.now() / 1000);
+
+        if (expiresAt && expiresAt < now) {
+          // Session expired
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          return;
+        }
+
         await fetchUserProfile(session.user.id);
       } else {
-        console.log("⚠️ No session or valid user ID, setting user to null");
         setUser(null);
       }
 
@@ -107,144 +105,77 @@ export const useAuthProvider = (): AuthContextType => {
     );
 
     return () => {
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
     try {
-      console.log("🔄 Fetching user profile for ID:", userId);
-      
+
       // Validate userId before making the request
       if (!userId || userId === 'undefined' || userId === 'null') {
-        console.error("❌ Invalid user ID provided:", userId);
         setUser(null);
         return;
       }
-      
-      // Prevent multiple simultaneous profile fetches
-      if (fetchingProfile) {
-        console.log("⚠️ Profile fetch already in progress, skipping...");
-        return;
-      }
-      
-      setFetchingProfile(true);
-      
+
       const { data, error } = await supabase
         .from("users")
         .select("*")
         .eq("id", userId)
         .single();
 
-      console.log("🔍 Raw Supabase response:", { data, error });
+      if (error && error.code === 'PGRST116') {
+        // No user profile found, create a basic one
 
-      // Check if data is valid (not null, not empty array, and has properties)
-      const hasValidData = data && 
-                           typeof data === 'object' && 
-                           !Array.isArray(data) && 
-                           Object.keys(data).length > 0;
-      
-      if (!hasValidData) {
-        console.log("⚠️ No valid profile data found (empty array or null)");
-      }
-
-      if ((error && error.code === 'PGRST116') || !hasValidData) {
-        // No user profile found - NUCLEAR OPTION: Just ignore and continue
-        console.log("⚠️ No user profile found - IGNORING for now to prevent crashes");
-        console.log("📱 App will continue with basic functionality");
-        
-        // Set a basic user object with auth data only
+        // Get the auth user data
         const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const basicUser = {
-            id: authUser.id,
-            email: authUser.email,
-            full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || "User",
-            user_type: authUser.user_metadata?.user_type || "consumer",
-            notification_preferences: {
-              push_promotions: true,
-              push_stock_alerts: true,
-              push_new_products: true,
-              email_promotions: true,
-              email_stock_alerts: true,
-            },
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          
-          console.log("✅ Using basic user data from auth:", {
-            id: basicUser.id,
-            email: basicUser.email,
-            full_name: basicUser.full_name,
-          });
-          
-          setUser(basicUser);
+
+        if (authUser && authUser.id === userId) {
+          // Explicitly set the user ID to match auth.uid() for RLS policy compliance
+          const { data: newProfile, error: createError } = await supabase
+            .from("users")
+            .insert({
+              id: authUser.id, // Explicitly set the user ID to match auth.uid()
+              email: authUser.email,
+              full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || "User",
+              user_type: authUser.user_metadata?.user_type || "consumer",
+              notification_preferences: {
+                push_promotions: true,
+                push_stock_alerts: true,
+                push_new_products: true,
+                email_promotions: true,
+                email_stock_alerts: true,
+              },
+              is_active: true,
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            throw createError;
+          }
+
+          if (newProfile) {
+            setUser(newProfile);
+            return;
+          }
         } else {
           setUser(null);
         }
       } else if (error) {
-        console.error("❌ Error fetching user profile:", error.message);
-        console.error("❌ Error details:", error);
         // Check for specific UUID errors
         if (error.message.includes('invalid input syntax for type uuid')) {
-          console.error("❌ Invalid UUID format detected, clearing user state");
+          // Invalid UUID, clear user state
         }
         throw error;
       }
 
-      if (hasValidData) {
-        console.log("✅ User profile fetched successfully:", {
-          id: data.id,
-          email: data.email,
-          full_name: data.full_name,
-          user_type: data.user_type,
-          rawData: data
-        });
+      if (data) {
         setUser(data);
-      } else {
-        console.warn("⚠️ No user profile data found for ID:", userId);
-        console.log("🔄 NUCLEAR FIX: Using auth data directly instead of creating database profile");
-        
-        // Get the auth user data and use it directly
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        
-        if (authUser && authUser.id === userId) {
-          const basicUser = {
-            id: authUser.id,
-            email: authUser.email,
-            full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || "User",
-            user_type: authUser.user_metadata?.user_type || "consumer",
-            notification_preferences: {
-              push_promotions: true,
-              push_stock_alerts: true,
-              push_new_products: true,
-              email_promotions: true,
-              email_stock_alerts: true,
-            },
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          
-          console.log("✅ Using auth data directly:", {
-            id: basicUser.id,
-            email: basicUser.email,
-            full_name: basicUser.full_name,
-          });
-          
-          setUser(basicUser);
-        } else {
-          setUser(null);
-        }
       }
     } catch (error: any) {
-      console.error("❌ Failed to fetch user profile:", error.message);
-      // Don't set user to null here as it might clear existing data
+      // Silent error - don't set user to null here as it might clear existing data
       // Let the UI handle the case where user data is missing
-    } finally {
-      setFetchingProfile(false);
     }
   };
 
@@ -254,7 +185,6 @@ export const useAuthProvider = (): AuthContextType => {
   ): Promise<{ error?: string }> => {
     try {
       setLoading(true);
-      console.log("🔄 Attempting to sign in...");
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.toLowerCase().trim(),
@@ -262,14 +192,11 @@ export const useAuthProvider = (): AuthContextType => {
       });
 
       if (error) {
-        console.error("❌ Sign in error:", error.message);
         return { error: error.message };
       }
 
-      console.log("✅ Sign in successful");
       return {};
     } catch (error: any) {
-      console.error("❌ Unexpected sign in error:", error.message);
       return { error: "Unexpected error during sign in" };
     } finally {
       setLoading(false);
@@ -285,15 +212,6 @@ export const useAuthProvider = (): AuthContextType => {
   ): Promise<{ error?: string }> => {
     try {
       setLoading(true);
-      console.log("🔄 Starting user registration for:", email);
-
-      // Step 1: Create auth user
-      console.log("🔄 Attempting Supabase auth signup with:", {
-        email: email.toLowerCase().trim(),
-        hasPassword: !!password,
-        passwordLength: password?.length,
-        userData: userData
-      });
 
       const { data, error } = await supabase.auth.signUp({
         email: email.toLowerCase().trim(),
@@ -304,24 +222,15 @@ export const useAuthProvider = (): AuthContextType => {
             user_type: userData.user_type,
           },
           emailRedirectTo: undefined, // Disable email verification
+          captchaToken: undefined, // Disable captcha
         },
       });
 
-      console.log("🔄 Auth signup result:", { 
-        hasData: !!data, 
-        hasUser: !!data?.user, 
-        hasError: !!error,
-        errorMessage: error?.message 
-      });
-
       if (error) {
-        console.error("❌ Auth signup failed:", error.message);
-        console.error("❌ Full error object:", error);
         
         // Handle specific error cases
         if (error.message?.includes('Network request failed')) {
-          console.error("❌ Network request failed - trying direct API fallback...");
-          
+
           try {
             // Try direct API call as fallback
             const directResult = await directSignUp({
@@ -330,48 +239,35 @@ export const useAuthProvider = (): AuthContextType => {
               full_name: userData.full_name,
               user_type: userData.user_type,
             });
-            
+
             if (directResult.success) {
-              console.log("✅ Direct API signup successful!");
-              
+
               // Continue with the rest of the signup process
               if (directResult.data?.user) {
                 // Set the data to use the direct result
                 const directData = { user: directResult.data.user };
-                
-                // Continue with profile creation logic...
-                console.log("✅ Direct auth user created successfully, ID:", directResult.data.user.id);
-                
+
                 // Skip to profile verification since we have the user
                 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
                 let profileCreated = false;
-                
+
                 for (let attempt = 1; attempt <= 10; attempt++) {
                   try {
-                    console.log(`🔄 Checking for user profile (attempt ${attempt}/10)...`);
-                    
+
                     const { data: profile, error: fetchErr } = await supabase
                       .from("users")
                       .select("id, email, full_name, user_type")
                       .eq("id", directResult.data.user.id)
                       .single();
 
-                    console.log(`🔍 Profile check result:`, {
-                      hasProfile: !!profile,
-                      hasError: !!fetchErr,
-                      errorMessage: fetchErr?.message
-                    });
-
                     if (profile && !fetchErr) {
-                      console.log("✅ User profile found!");
                       profileCreated = true;
                       break;
                     }
-                    
+
                     await wait(1000);
-                    
+
                   } catch (profileError: any) {
-                    console.error(`❌ Profile check error (attempt ${attempt}):`, profileError.message);
                     await wait(1000);
                   }
                 }
@@ -422,11 +318,15 @@ export const useAuthProvider = (): AuthContextType => {
         }
         
         if (error.message?.includes('Email not confirmed')) {
-          return { error: "Please check your email and confirm your account before signing in." };
+          return { error: "Email confirmation is disabled for testing. If you see this error, please contact support." };
         }
         
         if (error.message?.includes('User already registered')) {
           return { error: "This email is already registered. Please try signing in instead." };
+        }
+        
+        if (error.message?.includes('invalid email') || error.message?.includes('email address') || error.message?.includes('is invalid')) {
+          return { error: "Supabase is rejecting this email format. Try:\n• testuser123@example.com\n• demo@outlook.com\n• yourname@yahoo.com\n\nOr check Supabase Auth settings to allow all emails." };
         }
         
         return { error: error.message };
@@ -439,15 +339,96 @@ export const useAuthProvider = (): AuthContextType => {
 
       console.log("✅ Auth user created successfully, ID:", data.user.id);
 
-      // Step 2: Wait for database trigger to create profile automatically
-      console.log("🔄 Waiting for database trigger to create user profile...");
-      
-      // Small delay to allow trigger to execute
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Step 2: Check if user profile already exists, then create if needed
+      try {
+        console.log("🔄 Checking if user profile already exists...");
+        const { data: existingProfile } = await supabase
+          .from("users")
+          .select("id")
+          .eq("id", data.user.id)
+          .single();
 
-      // Step 3: Don't worry about profile creation - let the app handle it later
-      console.log("✅ Registration successful - profile will be created on first login if needed");
-      console.log("🎉 Skipping complex profile verification to avoid duplicate key errors");
+        if (existingProfile) {
+          console.log("✅ User profile already exists");
+        } else {
+          console.log("🔄 Creating user profile in database...");
+          const { data: insertResult, error: insertError } = await supabase
+            .from("users")
+            .insert({
+              id: data.user.id, // Explicitly set the user ID to match auth.uid()
+              email: data.user.email,
+              full_name: userData.full_name,
+              user_type: userData.user_type,
+              notification_preferences: {
+                push_promotions: true,
+                push_stock_alerts: true,
+                push_new_products: true,
+                email_promotions: true,
+                email_stock_alerts: true,
+              },
+              is_active: true,
+            });
+
+          if (insertError) {
+            // Handle duplicate key error gracefully
+            if (insertError.message?.includes("duplicate key") || insertError.message?.includes("users_pkey")) {
+              console.log("✅ User profile already exists (created by trigger)");
+            } else {
+              console.error("❌ Failed to create user profile:", insertError.message);
+              console.log("🔄 Insert failed, waiting for database trigger...");
+            }
+          } else {
+            console.log("✅ User profile created successfully");
+          }
+        }
+      } catch (profileError: any) {
+        console.error("❌ Error creating user profile:", profileError.message);
+      }
+
+      // Step 3: Verify profile exists (either from manual insert or trigger)
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      let profileCreated = false;
+      
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          console.log(`🔄 Checking for user profile (attempt ${attempt}/10)...`);
+          
+          const { data: profile, error: fetchErr } = await supabase
+            .from("users")
+            .select("id, email, full_name, user_type")
+            .eq("id", data.user.id)
+            .single();
+
+          console.log(`🔍 Profile check result:`, {
+            hasProfile: !!profile,
+            hasError: !!fetchErr,
+            errorMessage: fetchErr?.message
+          });
+
+          if (profile && !fetchErr) {
+            console.log("✅ User profile found!");
+            profileCreated = true;
+            break;
+          }
+          
+          if (fetchErr) {
+            console.error(`❌ Profile fetch error (attempt ${attempt}):`, fetchErr.message);
+          }
+          
+          await wait(1000); // Wait 1 second between attempts
+          
+        } catch (error: any) {
+          console.error(`❌ Profile check error (attempt ${attempt}):`, error.message);
+          await wait(1000);
+        }
+      }
+
+      if (!profileCreated) {
+        console.error("❌ User profile was not created after 10 attempts");
+        return { 
+          error: "Registration partially completed but user profile creation failed. This is likely due to database permissions. Please contact support or try again." 
+        };
+      }
 
       // Step 4: Sign out the user so they must manually log in
       try {
@@ -500,25 +481,56 @@ export const useAuthProvider = (): AuthContextType => {
   };
 
   const resetPassword = async (email: string): Promise<{ error?: string }> => {
-    try {
+    console.log("🔐 [useAuth] resetPassword() called");
+    console.log("📧 [useAuth] Email (raw):", email);
 
+    try {
+      setLoading(true);
+      const cleanEmail = email.toLowerCase().trim();
+      console.log("📧 [useAuth] Email (cleaned):", cleanEmail);
+      console.log("🔗 [useAuth] Redirect URL:", "manzana://reset-password");
+
+      console.log("📤 [useAuth] Calling supabase.auth.resetPasswordForEmail()...");
       const { error } = await supabase.auth.resetPasswordForEmail(
-        email.toLowerCase().trim(),
+        cleanEmail,
         {
           redirectTo: "manzana://reset-password",
         },
       );
 
       if (error) {
+        console.error("❌ [useAuth] Supabase error returned:");
+        console.error("   - Message:", error.message);
+        console.error("   - Status:", error.status);
+        console.error("   - Name:", error.name);
 
+        // Handle specific error cases
+        if (error.message?.includes('User not found') || error.message?.includes('Email not found')) {
+          console.log("⚠️ [useAuth] User not found error");
+          return { error: "No account found with this email address." };
+        }
+
+        if (error.message?.includes('Network request failed')) {
+          console.log("⚠️ [useAuth] Network error");
+          return { error: "Network connection failed. Please check your internet connection and try again." };
+        }
+
+        console.log("⚠️ [useAuth] Generic error");
         return { error: error.message };
       }
 
-
+      console.log("✅ [useAuth] Password reset email sent successfully!");
+      console.log("📬 [useAuth] Supabase should have sent email to:", cleanEmail);
+      console.log("🔔 [useAuth] User should check their email inbox");
       return {};
-    } catch (error) {
-
-      return { error: "Error enviando email de recuperación" };
+    } catch (error: any) {
+      console.error("💥 [useAuth] Unexpected error in resetPassword:");
+      console.error("   - Message:", error?.message);
+      console.error("   - Stack:", error?.stack);
+      return { error: "Error sending password reset email. Please try again." };
+    } finally {
+      console.log("🔄 [useAuth] Setting loading to false");
+      setLoading(false);
     }
   };
 
@@ -527,12 +539,12 @@ export const useAuthProvider = (): AuthContextType => {
   ): Promise<{ error?: string }> => {
     try {
       if (!user) {
-
+        console.error("❌ updateProfile - No user found");
         return { error: "Usuario no autenticado" };
       }
 
       setLoading(true);
-
+      console.log("🔄 Updating profile with:", updates);
 
       // Update user profile in database
       const { error, data } = await supabase
@@ -541,25 +553,31 @@ export const useAuthProvider = (): AuthContextType => {
           ...updates,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", user.id);
+        .eq("id", user.id)
+        .select()
+        .single();
 
       if (error) {
-
+        console.error("❌ updateProfile error:", error);
         return { error: error.message };
       }
 
+      console.log("✅ updateProfile success - data from database:", data);
 
-
-      // Update local user state
-      setUser({ ...user, ...updates });
+      // Update local user state with fresh data from database
+      // This ensures all fields (including region, barangay, etc.) are updated
+      if (data) {
+        setUser(data);
+        console.log("✅ Local user state updated with fresh database data");
+      } else {
+        console.warn("⚠️ No data returned from update, falling back to merge");
+        setUser({ ...user, ...updates });
+      }
 
       return {};
-    } catch (error: any) {
-      console.error("❌ Error updating profile:", error);
-      const errorInfo = handleSupabaseError(error);
-      return { 
-        error: errorInfo?.userMessage || "Error updating profile" 
-      };
+    } catch (error) {
+      console.error("❌ Unexpected updateProfile error:", error);
+      return { error: "Error updating profile" };
     } finally {
       setLoading(false);
     }

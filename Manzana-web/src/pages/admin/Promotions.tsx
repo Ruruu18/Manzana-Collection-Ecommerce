@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import "../../styles/dashboard-enhancement.css";
 
 type PromotionType = "percentage" | "fixed_amount" | "buy_x_get_y" | "free_shipping" | "custom";
 
@@ -16,14 +17,23 @@ type Promotion = {
   image_url?: string;
   created_at?: string;
   description?: string;
-  minimum_order_value?: number;
-  max_uses?: number;
-  applicable_products?: string[];
+  min_purchase_amount?: number;
+  usage_limit?: number;
+  applicable_to?: "all" | "category" | "product";
+  applicable_ids?: string[];
+};
+
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  category_id: string;
+  images?: { url: string }[];
 };
 
 export default function Promotions() {
   const navigate = useNavigate();
-  const { session, isAdminOrStaff, userRole } = useAuth();
+  const { session, isAdmin, userRole } = useAuth();
   const [items, setItems] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
@@ -40,37 +50,65 @@ export default function Promotions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"standard" | "shipping" | "custom">("standard");
+  const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
-  // Role-based access control
+  // Product selection state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [applyTo, setApplyTo] = useState<"all" | "product">("all");
+
+  // Role-based access control - Admin only
   useEffect(() => {
     if (!session) {
       navigate("/admin/login");
       return;
     }
-    
-    if (!isAdminOrStaff) {
-      console.error('Insufficient permissions:', userRole);
-      navigate("/admin/login");
+
+    if (!isAdmin) {
+      console.error('Insufficient permissions - Admin only:', userRole);
+      navigate("/admin");
       return;
     }
-  }, [session, isAdminOrStaff, userRole, navigate]);
+  }, [session, isAdmin, userRole, navigate]);
 
   async function load() {
     setLoading(true);
     const { data, error } = await supabase
       .from("promotions")
       .select(
-        "id, title, promotion_type, discount_value, start_date, end_date, is_active, image_url, created_at",
+        "id, title, promotion_type, discount_value, start_date, end_date, is_active, image_url, created_at, description, min_purchase_amount, usage_limit",
       )
       .order("created_at", { ascending: false });
-    if (error) setError(error.message);
+    if (error) {
+      console.error("Error loading promotions:", error);
+      setError(error.message);
+    } else {
+      console.log("Loaded promotions:", data);
+    }
     setItems((data || []) as Promotion[]);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
+    loadProducts();
   }, []);
+
+  async function loadProducts() {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, price, category_id, images:product_images(url)")
+      .eq("is_active", true)
+      .order("name");
+
+    if (error) {
+      console.error("Error loading products:", error);
+    } else {
+      setProducts((data || []) as Product[]);
+    }
+  }
 
   const filteredItems = useMemo(() => {
     if (!searchTerm) return items;
@@ -78,6 +116,21 @@ export default function Promotions() {
       item.title.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [items, searchTerm]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearchTerm) return products;
+    return products.filter((product) =>
+      product.name.toLowerCase().includes(productSearchTerm.toLowerCase()),
+    );
+  }, [products, productSearchTerm]);
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    );
+  };
 
   const canCreate = useMemo(() => {
     const basicRequirements = !!title && !!start && !!end;
@@ -113,6 +166,8 @@ export default function Promotions() {
         });
       if (upErr) {
         setError(`Image upload failed: ${upErr.message}`);
+        setCreating(false);
+        return;
       } else {
         const { data } = supabase.storage
           .from("promotion-images")
@@ -141,15 +196,22 @@ export default function Promotions() {
       promotion_type: finalPromotionType,
       start_date: new Date(start).toISOString(),
       end_date: new Date(end).toISOString(),
-      image_url,
       is_active: true,
     };
+
+    // Only update image_url if a new image was uploaded
+    if (image_url) {
+      promotionData.image_url = image_url;
+    } else if (!isEditMode) {
+      // For new promotions, set image_url to null if no image
+      promotionData.image_url = null;
+    }
 
     // Handle different promotion types
     switch (activeTab) {
       case "shipping":
         promotionData.discount_value = Number(minOrderValue) || 0;
-        promotionData.minimum_order_value = Number(minOrderValue) || 0;
+        promotionData.min_purchase_amount = Number(minOrderValue) || 0;
         break;
       case "custom":
         promotionData.discount_value = Number(value) || 0;
@@ -161,12 +223,36 @@ export default function Promotions() {
     }
 
     if (maxUses) {
-      promotionData.max_uses = Number(maxUses);
+      promotionData.usage_limit = Number(maxUses);
     }
 
-    const { error: insertErr } = await supabase.from("promotions").insert([promotionData]);
-    if (insertErr) setError(insertErr.message);
+    // Add product selection
+    promotionData.applicable_to = applyTo;
+    if (applyTo === "product" && selectedProductIds.length > 0) {
+      promotionData.applicable_ids = selectedProductIds;
+    } else {
+      promotionData.applicable_ids = [];
+    }
 
+    let result;
+    if (isEditMode && editingPromotion) {
+      // Update existing promotion
+      result = await supabase
+        .from("promotions")
+        .update(promotionData)
+        .eq("id", editingPromotion.id);
+    } else {
+      // Create new promotion
+      result = await supabase.from("promotions").insert([promotionData]);
+    }
+
+    if (result.error) {
+      setError(result.error.message);
+      setCreating(false);
+      return;
+    }
+
+    // Reset form
     setTitle("");
     setType("percentage");
     setValue("");
@@ -177,7 +263,12 @@ export default function Promotions() {
     setMinOrderValue("");
     setMaxUses("");
     setActiveTab("standard");
+    setApplyTo("all");
+    setSelectedProductIds([]);
+    setProductSearchTerm("");
     setIsModalOpen(false);
+    setEditingPromotion(null);
+    setIsEditMode(false);
     await load();
     setCreating(false);
   }
@@ -226,11 +317,11 @@ export default function Promotions() {
       case "percentage":
         return `${value}% off`;
       case "fixed_amount":
-        return `$${value.toFixed(2)} off`;
+        return `₱${value.toFixed(2)} off`;
       case "buy_x_get_y":
         return `Buy ${value} Get 1`;
       case "free_shipping":
-        return value > 0 ? `Free shipping on orders $${value.toFixed(2)}+` : "Free shipping";
+        return value > 0 ? `Free shipping on orders ₱${value.toFixed(2)}+` : "Free shipping";
       case "custom":
         return promotion?.description || "Custom offer";
       default:
@@ -267,7 +358,41 @@ export default function Promotions() {
     setMinOrderValue("");
     setMaxUses("");
     setActiveTab("standard");
+    setApplyTo("all");
+    setSelectedProductIds([]);
+    setProductSearchTerm("");
     setError(null);
+    setEditingPromotion(null);
+    setIsEditMode(false);
+  };
+
+  const handleEditPromotion = (promotion: Promotion) => {
+    setEditingPromotion(promotion);
+    setIsEditMode(true);
+    setTitle(promotion.title);
+    setType(promotion.promotion_type);
+    setValue(promotion.discount_value);
+    setStart(new Date(promotion.start_date).toISOString().slice(0, 16));
+    setEnd(new Date(promotion.end_date).toISOString().slice(0, 16));
+    setDescription(promotion.description || "");
+    setMinOrderValue(promotion.min_purchase_amount || "");
+    setMaxUses(promotion.usage_limit || "");
+
+    // Set product selection - filter out 'category' as it's not currently supported in UI
+    const applicableTo = promotion.applicable_to || "all";
+    setApplyTo(applicableTo === "category" ? "all" : applicableTo);
+    setSelectedProductIds(promotion.applicable_ids || []);
+
+    // Set active tab based on promotion type
+    if (promotion.promotion_type === "free_shipping") {
+      setActiveTab("shipping");
+    } else if (promotion.promotion_type === "custom") {
+      setActiveTab("custom");
+    } else {
+      setActiveTab("standard");
+    }
+
+    setIsModalOpen(true);
   };
 
   return (
@@ -290,7 +415,6 @@ export default function Promotions() {
       {/* Search Bar */}
       <div className="search-bar" style={{ marginBottom: "var(--spacing-lg)" }}>
         <div className="search">
-          <span className="search-icon">🔍</span>
           <input
             type="text"
             placeholder="Search promotions by title..."
@@ -305,7 +429,7 @@ export default function Promotions() {
         <div className="modal-overlay" onClick={handleModalClose}>
           <div className="modal large" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Create New Promotion</h2>
+              <h2>{isEditMode ? "Edit Promotion" : "Create New Promotion"}</h2>
               <button className="modal-close" onClick={handleModalClose}>
                 ✕
               </button>
@@ -428,7 +552,7 @@ export default function Promotions() {
                       {type === "percentage"
                         ? "Percentage (%)"
                         : type === "fixed_amount"
-                          ? "Amount ($)"
+                          ? "Amount (₱)"
                           : "Quantity to Buy"}
                     </label>
                     <input
@@ -464,7 +588,7 @@ export default function Promotions() {
             {/* Shipping Offers Tab */}
             {activeTab === "shipping" && (
               <div className="form-group">
-                <label className="form-label">Minimum Order Amount ($)</label>
+                <label className="form-label">Minimum Order Amount (₱)</label>
                 <input
                   className="input"
                   placeholder="50.00 (enter 0 for free shipping on all orders)"
@@ -492,7 +616,7 @@ export default function Promotions() {
                   <label className="form-label">Custom Description</label>
                   <textarea
                     className="input"
-                    placeholder="Describe your custom promotion (e.g., 'Buy 2 shirts, get 1 free hat', 'Free gift with purchase over $100')"
+                    placeholder="Describe your custom promotion (e.g., 'Buy 2 shirts, get 1 free hat', 'Free gift with purchase over ₱100')"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}
@@ -545,7 +669,91 @@ export default function Promotions() {
                 />
               </div>
             </div>
-            
+
+            {/* Product Selection */}
+            <div style={{ marginTop: "var(--spacing-lg)", marginBottom: "var(--spacing-lg)", padding: "var(--spacing)", background: "var(--surface)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+              <h3 style={{ marginBottom: "var(--spacing)", fontSize: "1rem", fontWeight: "var(--font-weight-semibold)" }}>Apply To</h3>
+
+              <div style={{ display: "flex", gap: "var(--spacing-sm)", marginBottom: "var(--spacing)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "var(--spacing-xs)", cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="applyTo"
+                    value="all"
+                    checked={applyTo === "all"}
+                    onChange={() => {
+                      setApplyTo("all");
+                      setSelectedProductIds([]);
+                    }}
+                  />
+                  <span>All Products</span>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "var(--spacing-xs)", cursor: "pointer" }}>
+                  <input
+                    type="radio"
+                    name="applyTo"
+                    value="product"
+                    checked={applyTo === "product"}
+                    onChange={() => setApplyTo("product")}
+                  />
+                  <span>Specific Products</span>
+                </label>
+              </div>
+
+              {applyTo === "product" && (
+                <div>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Search products..."
+                    value={productSearchTerm}
+                    onChange={(e) => setProductSearchTerm(e.target.value)}
+                    style={{ marginBottom: "var(--spacing-sm)" }}
+                  />
+
+                  <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--spacing-sm)" }}>
+                    {filteredProducts.length === 0 ? (
+                      <p style={{ color: "var(--text-secondary)", textAlign: "center", padding: "var(--spacing)" }}>No products found</p>
+                    ) : (
+                      filteredProducts.map((product) => (
+                        <label
+                          key={product.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "var(--spacing-sm)",
+                            padding: "var(--spacing-sm)",
+                            cursor: "pointer",
+                            borderRadius: "var(--radius-sm)",
+                            transition: "background 0.2s",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedProductIds.includes(product.id)}
+                            onChange={() => toggleProductSelection(product.id)}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: "var(--font-weight-medium)", fontSize: "0.9rem" }}>{product.name}</div>
+                            <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>₱{product.price.toFixed(2)}</div>
+                          </div>
+                        </label>
+                      ))
+                    )}
+                  </div>
+
+                  {selectedProductIds.length > 0 && (
+                    <div style={{ marginTop: "var(--spacing-sm)", padding: "var(--spacing-sm)", background: "var(--primary-light)", borderRadius: "var(--radius)", fontSize: "0.9rem" }}>
+                      <strong>{selectedProductIds.length}</strong> product{selectedProductIds.length !== 1 ? 's' : ''} selected
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Optional Fields */}
             <div className="grid cols-2">
               <div className="form-group">
@@ -565,12 +773,59 @@ export default function Promotions() {
               </div>
               <div className="form-group">
                 <label className="form-label">Promotion Banner (Optional)</label>
-                <input
-                  className="file"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                />
+                <div className="image-upload-container">
+                  {/* Show current image if editing and has image */}
+                  {isEditMode && editingPromotion?.image_url && !imageFile && (
+                    <div className="current-image-preview" style={{ marginBottom: "var(--spacing-sm)" }}>
+                      <img 
+                        src={editingPromotion.image_url} 
+                        alt="Current promotion banner"
+                        style={{
+                          width: "100%",
+                          maxWidth: "200px",
+                          height: "100px",
+                          objectFit: "cover",
+                          borderRadius: "var(--radius)",
+                          border: "1px solid var(--border)"
+                        }}
+                      />
+                      <small style={{ color: "var(--muted)", fontSize: "12px", display: "block", marginTop: "4px" }}>
+                        Current image (upload a new one to replace)
+                      </small>
+                    </div>
+                  )}
+                  
+                  {/* Show preview of new image */}
+                  {imageFile && (
+                    <div className="new-image-preview" style={{ marginBottom: "var(--spacing-sm)" }}>
+                      <img 
+                        src={URL.createObjectURL(imageFile)} 
+                        alt="New promotion banner preview"
+                        style={{
+                          width: "100%",
+                          maxWidth: "200px",
+                          height: "100px",
+                          objectFit: "cover",
+                          borderRadius: "var(--radius)",
+                          border: "1px solid var(--primary)"
+                        }}
+                      />
+                      <small style={{ color: "var(--primary)", fontSize: "12px", display: "block", marginTop: "4px" }}>
+                        New image preview
+                      </small>
+                    </div>
+                  )}
+                  
+                  <input
+                    className="file"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  />
+                  <small style={{ color: "var(--muted)", fontSize: "12px", marginTop: "4px", display: "block" }}>
+                    Recommended: 800x400px or similar aspect ratio
+                  </small>
+                </div>
               </div>
             </div>
 
@@ -612,10 +867,10 @@ export default function Promotions() {
                         className="spinner"
                         style={{ width: 14, height: 14 }}
                       ></span>
-                      Creating...
+                      {isEditMode ? "Updating..." : "Creating..."}
                     </>
                   ) : (
-                    "Create Promotion"
+                    isEditMode ? "Update Promotion" : "Create Promotion"
                   )}
                 </button>
               </div>
@@ -866,6 +1121,7 @@ export default function Promotions() {
                             padding: "6px 10px",
                             minWidth: "auto",
                           }}
+                          onClick={() => handleEditPromotion(promotion)}
                           title="Edit promotion"
                         >
                           ✏️

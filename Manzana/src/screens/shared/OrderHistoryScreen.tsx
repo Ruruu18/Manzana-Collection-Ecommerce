@@ -6,11 +6,16 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  Dimensions,
+  ScrollView,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../services/supabase";
+import { cartService } from "../../services/cart";
 import { useAuth } from "../../hooks/useAuth";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   COLORS,
   TYPOGRAPHY,
@@ -18,9 +23,12 @@ import {
   BORDER_RADIUS,
   ORDER_STATUS,
 } from "../../constants/theme";
-import { formatCurrency, formatDate } from "../../utils";
+import { formatCurrency, formatDate, getErrorMessage } from "../../utils";
 import LoadingState from "../../components/LoadingState";
+import ListSkeleton from "../../components/ListSkeleton";
 import Button from "../../components/Button";
+
+const { width } = Dimensions.get('window');
 
 interface Order {
   id: string;
@@ -28,9 +36,11 @@ interface Order {
   status: keyof typeof ORDER_STATUS;
   total_amount: number;
   created_at: string;
-  items_count: number;
-  shipping_address: string;
-  estimated_delivery: string;
+  pickup_date?: string;
+  pickup_time?: string;
+  order_items?: any[];
+  shipping_address?: any;
+  estimated_delivery?: string;
 }
 
 interface OrderHistoryScreenProps {
@@ -43,48 +53,106 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const scrollViewRef = React.useRef<ScrollView>(null);
+  const scrollPositionRef = React.useRef(0);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      loadOrders();
+    }, [])
+  );
+
+  // Reload when filter changes
   useEffect(() => {
-    loadOrders();
-  }, []);
+    if (user) {
+      loadOrders().then(() => {
+        // Restore scroll position after loading
+        setTimeout(() => {
+          scrollViewRef.current?.scrollTo({
+            x: scrollPositionRef.current,
+            animated: false,
+          });
+        }, 50);
+      });
+    }
+  }, [selectedStatus]);
 
-  const loadOrders = async () => {
+  const loadOrders = async (resetPage = true) => {
     if (!user) return;
 
     try {
-      setLoading(true);
+      if (resetPage) {
+        setLoading(true);
+        setPage(1);
+        setOrders([]);
+      }
+      setError(null);
+
+      const currentPage = resetPage ? 1 : page;
+      const pageSize = 20;
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+
       let query = supabase
         .from("orders")
         .select(
           `
-          id,
-          order_number,
-          status,
-          total_amount,
-          created_at,
-          items_count,
-          shipping_address,
-          estimated_delivery
+          *,
+          order_items (
+            id,
+            product_id,
+            product_variant_id,
+            quantity,
+            products (
+              name,
+              product_images (url, is_primary)
+            )
+          )
         `,
+          { count: 'exact' }
         )
         .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
       if (selectedStatus !== "all") {
         query = query.eq("status", selectedStatus);
       }
 
-      const { data, error } = await query;
+      const { data, error: queryError, count } = await query;
 
-      if (error) throw error;
-      setOrders(data || []);
-    } catch (error) {
-      console.error("Error loading orders:", error);
+      if (queryError) throw queryError;
+
+      if (resetPage) {
+        setOrders(data || []);
+      } else {
+        setOrders(prev => [...prev, ...(data || [])]);
+      }
+
+      setHasMore(count ? to < count - 1 : false);
+      if (!resetPage) {
+        setPage(currentPage + 1);
+      }
+    } catch (err) {
+      console.error("Error loading orders:", err);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
+  };
+
+  const loadMoreOrders = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    await loadOrders(false);
   };
 
   const onRefresh = async () => {
@@ -121,13 +189,67 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
       case "processing":
         return "construct-outline";
       case "shipped":
-        return "car-outline";
+        return "bag-check-outline"; // Ready for pickup
       case "delivered":
-        return "checkmark-done-circle-outline";
+        return "checkmark-done-circle-outline"; // Picked up/Completed
       case "cancelled":
         return "close-circle-outline";
       default:
         return "help-circle-outline";
+    }
+  };
+
+  const handleReorder = async (order: Order) => {
+    if (!user || !order.order_items) return;
+
+    try {
+      setReorderingId(order.id);
+      let addedCount = 0;
+      let failedCount = 0;
+
+      // Add each item from the order to cart
+      for (const item of order.order_items) {
+        const result = await cartService.addToCart(
+          user.id,
+          item.product_id,
+          item.quantity,
+          item.product_variant_id
+        );
+
+        if (result.error) {
+          failedCount++;
+        } else {
+          addedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        Alert.alert(
+          'Items Added to Cart',
+          `Successfully added ${addedCount} item(s) to your cart.${failedCount > 0 ? ` ${failedCount} item(s) could not be added.` : ''}`,
+          [
+            {
+              text: 'Continue Shopping',
+              style: 'cancel',
+            },
+            {
+              text: 'View Cart',
+              onPress: () => navigation.navigate('Cart'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Reorder Failed',
+          'Could not add items to cart. Some products may no longer be available.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err) {
+      console.error('Error reordering:', err);
+      Alert.alert('Error', 'Failed to reorder. Please try again.');
+    } finally {
+      setReorderingId(null);
     }
   };
 
@@ -139,31 +261,40 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
       >
         <Ionicons name="arrow-back" size={24} color={COLORS.text} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Order History</Text>
+      <Text style={styles.headerTitle}>Orders</Text>
       <View style={styles.headerRight} />
     </View>
   );
 
+  const filterData = [
+    { key: "all", label: "All" },
+    { key: "pending", label: "Pending" },
+    { key: "confirmed", label: "Confirmed" },
+    { key: "processing", label: "Processing" },
+    { key: "delivered", label: "Completed" },
+    { key: "cancelled", label: "Cancelled" },
+  ];
+
   const renderStatusFilter = () => (
     <View style={styles.filterContainer}>
-      <FlatList
-        data={[
-          { key: "all", label: "All" },
-          { key: "pending", label: "Pending" },
-          { key: "processing", label: "Processing" },
-          { key: "shipped", label: "Shipped" },
-          { key: "delivered", label: "Delivered" },
-        ]}
-        renderItem={({ item }) => (
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterList}
+        onScroll={(event) => {
+          scrollPositionRef.current = event.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
+      >
+        {filterData.map((item) => (
           <TouchableOpacity
+            key={item.key}
             style={[
               styles.filterButton,
               selectedStatus === item.key && styles.filterButtonActive,
             ]}
-            onPress={() => {
-              setSelectedStatus(item.key);
-              loadOrders();
-            }}
+            onPress={() => setSelectedStatus(item.key)}
           >
             <Text
               style={[
@@ -174,12 +305,8 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
               {item.label}
             </Text>
           </TouchableOpacity>
-        )}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterList}
-        keyExtractor={(item) => item.key}
-      />
+        ))}
+      </ScrollView>
     </View>
   );
 
@@ -215,16 +342,19 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
       <View style={styles.orderDetails}>
         <View style={styles.orderMeta}>
           <Text style={styles.itemsCount}>
-            {item.items_count} {item.items_count === 1 ? "item" : "items"}
+            {(() => {
+              const totalQty = item.order_items?.reduce((total, orderItem) => total + orderItem.quantity, 0) || 0;
+              return `${totalQty} ${totalQty === 1 ? "item" : "items"}`;
+            })()}
           </Text>
           <Text style={styles.orderTotal}>
             {formatCurrency(item.total_amount)}
           </Text>
         </View>
 
-        {item.estimated_delivery && item.status === "shipped" && (
+        {item.pickup_date && (
           <Text style={styles.deliveryInfo}>
-            Estimated delivery: {formatDate(item.estimated_delivery)}
+            Pickup: {formatDate(item.pickup_date)} at {item.pickup_time}
           </Text>
         )}
       </View>
@@ -233,22 +363,32 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
         <Button
           title="View Details"
           onPress={() => {
-            // Navigate to order details
-            // navigation.navigate('OrderDetails', { orderId: item.id });
+            navigation.navigate('OrderDetails', { orderId: item.id });
           }}
           size="small"
           variant="outline"
-          style={styles.detailsButton}
+          style={styles.actionButton}
+          icon="receipt-outline"
+        />
+
+        <Button
+          title="Track"
+          onPress={() => {
+            navigation.navigate('OrderTracking', { orderId: item.id });
+          }}
+          size="small"
+          variant="outline"
+          style={styles.actionButton}
+          icon="location-outline"
         />
 
         {item.status === "delivered" && (
           <Button
-            title="Reorder"
-            onPress={() => {
-              // Add items to cart again
-            }}
+            title={reorderingId === item.id ? "Adding..." : "Reorder"}
+            onPress={() => handleReorder(item)}
+            disabled={reorderingId === item.id}
             size="small"
-            style={styles.reorderButton}
+            style={styles.actionButton}
           />
         )}
       </View>
@@ -270,16 +410,33 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
     </View>
   );
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
-      <LoadingState loading={loading} emptyMessage="Loading order history">
-        {null}
-      </LoadingState>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {renderHeader()}
+        {renderStatusFilter()}
+        <ListSkeleton count={5} itemHeight={120} />
+      </SafeAreaView>
+    );
+  }
+
+  if (error && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {renderHeader()}
+        <LoadingState
+          loading={false}
+          error={error}
+          onRetry={loadOrders}
+        >
+          {null}
+        </LoadingState>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {renderHeader()}
       {renderStatusFilter()}
 
@@ -294,6 +451,15 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+          onEndReached={loadMoreOrders}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={() =>
+            loadingMore ? (
+              <View style={styles.loadingMore}>
+                <Text style={styles.loadingMoreText}>Loading more...</Text>
+              </View>
+            ) : null
+          }
         />
       ) : (
         renderEmptyState()
@@ -340,6 +506,7 @@ const styles = StyleSheet.create({
   },
   filterList: {
     paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
   },
   filterButton: {
     paddingHorizontal: SPACING.md,
@@ -390,10 +557,12 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: "600",
     marginBottom: SPACING.xs,
+    flexWrap: "wrap",
   },
   orderDate: {
     ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
+    flexWrap: "wrap",
   },
   statusBadge: {
     flexDirection: "row",
@@ -434,12 +603,11 @@ const styles = StyleSheet.create({
   orderActions: {
     flexDirection: "row",
     gap: SPACING.sm,
+    flexWrap: "wrap",
   },
-  detailsButton: {
+  actionButton: {
     flex: 1,
-  },
-  reorderButton: {
-    flex: 1,
+    minWidth: 100,
   },
   emptyState: {
     flex: 1,
@@ -463,6 +631,14 @@ const styles = StyleSheet.create({
   },
   exploreButton: {
     alignSelf: "center",
+  },
+  loadingMore: {
+    padding: SPACING.lg,
+    alignItems: 'center',
+  },
+  loadingMoreText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
   },
 });
 

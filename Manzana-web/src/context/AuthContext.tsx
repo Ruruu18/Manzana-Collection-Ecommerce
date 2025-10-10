@@ -276,8 +276,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const permissions = useMemo(() => computeUserPermissions(userProfile), [userProfile])
 
   async function signIn(email: string, password: string) {
-    console.log('🔍 AuthContext signIn - using supabase client:', supabase)
-    console.log('🔍 AuthContext signIn - supabase URL should be enxdypnlbcltrjuepldk')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return { error: error.message }
     return {}

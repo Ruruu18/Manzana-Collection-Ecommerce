@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   Dimensions,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +28,7 @@ import {
   formatCurrency,
   optimizeImageUrl,
   getTimeUntilDate,
+  getCategoryIcon,
 } from "../../../utils";
 import LoadingState from "../../../components/LoadingState";
 import Button from "../../../components/Button";
@@ -40,11 +42,13 @@ interface PromotionsScreenProps {
 
 interface CountdownTimerProps {
   endDate: string;
+  label?: string;
   onExpire?: () => void;
 }
 
 const CountdownTimer: React.FC<CountdownTimerProps> = ({
   endDate,
+  label = "Ends in:",
   onExpire,
 }) => {
   const [timeLeft, setTimeLeft] = useState(getTimeUntilDate(endDate));
@@ -72,7 +76,7 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({
 
   return (
     <View style={styles.countdownContainer}>
-      <Text style={styles.countdownLabel}>Ends in:</Text>
+      <Text style={styles.countdownLabel}>{label}</Text>
       <View style={styles.countdownTimer}>
         {timeLeft.days > 0 && (
           <>
@@ -141,12 +145,65 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
 
       // Apply filters
       if (filters.activeOnly) {
-        query = query
+        // Show active promotions AND scheduled promotions (starting in the future)
+        // Split into two separate queries and combine
+        const activeQuery = supabase
+          .from("promotions")
+          .select("*")
           .eq("is_active", true)
           .lte("start_date", now)
           .gte("end_date", now);
+
+        const scheduledQuery = supabase
+          .from("promotions")
+          .select("*")
+          .eq("is_active", true)
+          .gt("start_date", now);
+
+        const [activeResult, scheduledResult] = await Promise.all([
+          activeQuery,
+          scheduledQuery,
+        ]);
+
+        if (activeResult.error) throw activeResult.error;
+        if (scheduledResult.error) throw scheduledResult.error;
+
+        let combinedData = [
+          ...(activeResult.data || []),
+          ...(scheduledResult.data || []),
+        ];
+
+        // Apply additional filters to combined data
+        if (filters.type) {
+          combinedData = combinedData.filter(
+            (item) => item.promotion_type === filters.type
+          );
+        }
+
+        if (filters.category) {
+          combinedData = combinedData.filter((item) =>
+            item.applicable_ids?.includes(filters.category)
+          );
+        }
+
+        if (filters.userType && user?.user_type) {
+          combinedData = combinedData.filter(
+            (item) =>
+              !item.user_type_restriction ||
+              item.user_type_restriction === user.user_type
+          );
+        }
+
+        // Sort by start date
+        combinedData.sort(
+          (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+        );
+
+        setPromotions(combinedData);
+        return;
       }
 
+      // For non-activeOnly filters, use regular query
       if (filters.type) {
         query = query.eq("promotion_type", filters.type);
       }
@@ -157,11 +214,11 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
 
       if (filters.userType && user?.user_type) {
         query = query.or(
-          `user_type_restriction.is.null,user_type_restriction.eq.${user.user_type}`,
+          `user_type_restriction.is.null,user_type_restriction.eq.${user.user_type}`
         );
       }
 
-      query = query.order("created_at", { ascending: false });
+      query = query.order("start_date", { ascending: true });
 
       const { data, error } = await query;
 
@@ -246,7 +303,7 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
         case "percentage":
           return `${item.discount_value}% OFF`;
         case "fixed_amount":
-          return `$${item.discount_value} OFF`;
+          return `₱${item.discount_value} OFF`;
         case "free_shipping":
           return "FREE SHIPPING";
         case "buy_x_get_y":
@@ -301,7 +358,16 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
             ]}
           >
             <Text style={styles.promotionBadgeText}>
-              {getPromotionBadgeText()}
+              {(() => {
+                const now = new Date();
+                const startDate = new Date(item.start_date);
+                
+                if (now < startDate) {
+                  return `📅 COMING SOON - ${getPromotionBadgeText()}`;
+                } else {
+                  return getPromotionBadgeText();
+                }
+              })()}
             </Text>
           </View>
 
@@ -336,10 +402,39 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
             </View>
           )}
 
-          <CountdownTimer
-            endDate={item.end_date}
-            onExpire={() => fetchPromotions()}
-          />
+          {/* Show countdown timer based on promotion status */}
+          {(() => {
+            const now = new Date();
+            const startDate = new Date(item.start_date);
+            const endDate = new Date(item.end_date);
+            
+            if (now < startDate) {
+              // Promotion hasn't started yet - show countdown to start
+              return (
+                <CountdownTimer
+                  endDate={item.start_date}
+                  label="🚀 Starts in:"
+                  onExpire={() => fetchPromotions()}
+                />
+              );
+            } else if (now >= startDate && now <= endDate) {
+              // Promotion is active - show countdown to end
+              return (
+                <CountdownTimer
+                  endDate={item.end_date}
+                  label="⏰ Ends in:"
+                  onExpire={() => fetchPromotions()}
+                />
+              );
+            } else {
+              // Promotion has ended
+              return (
+                <View style={styles.countdownContainer}>
+                  <Text style={styles.expiredText}>⏰ This promotion has ended</Text>
+                </View>
+              );
+            }
+          })()}
 
           <View style={styles.promotionFooter}>
             <View style={styles.usageInfo}>
@@ -398,7 +493,10 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.modalContent}>
+        <ScrollView
+          style={styles.modalContent}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Promotion Type */}
           <View style={styles.filterSection}>
             <Text style={styles.filterTitle}>Promotion type</Text>
@@ -479,7 +577,7 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
                       styles.filterOptionActive,
                   ]}
                 >
-                  {category.name}
+                  {getCategoryIcon(category.name)} {category.name}
                 </Text>
                 {filters.category === category.id && (
                   <Ionicons name="checkmark" size={20} color={COLORS.primary} />
@@ -516,7 +614,7 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
               </View>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
 
         <View style={styles.modalFooter}>
           <Button title="Apply filters" onPress={applyFilters} fullWidth />

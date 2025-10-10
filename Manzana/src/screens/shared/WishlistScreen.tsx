@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../services/supabase";
 import { useAuth } from "../../hooks/useAuth";
+import { useCartStore } from "../../store/cartStore";
 import { Product } from "../../types";
 import {
   COLORS,
@@ -24,6 +25,7 @@ import {
   formatCurrency,
   optimizeImageUrl,
   sortWishlistItemsWithImages,
+  toast,
 } from "../../utils";
 import LoadingState from "../../components/LoadingState";
 import Button from "../../components/Button";
@@ -45,6 +47,9 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
+
+  // Use Zustand store for cart
+  const { addToCartAsync } = useCartStore();
 
   useEffect(() => {
     loadWishlist();
@@ -99,29 +104,36 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ navigation }) => {
 
       if (error) throw error;
 
+      const removedItem = wishlistItems.find(item => item.id === itemId);
       setWishlistItems((prev) => prev.filter((item) => item.id !== itemId));
+      toast.removedFromWishlist(removedItem?.product?.name);
     } catch (error) {
       console.error("Error removing from wishlist:", error);
-      Alert.alert("Error", "Could not remove product from wishlist");
+      toast.error("Could not remove product from wishlist");
     }
   };
 
   const addToCart = async (product: Product) => {
-    // This would typically add the product to cart
-    Alert.alert(
-      "Add to Cart",
-      `Do you want to add "${product.name}" to your cart?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Add",
-          onPress: () => {
-            // Add to cart logic here
-            Alert.alert("Success", "Product added to cart");
-          },
-        },
-      ],
-    );
+    if (!user) {
+      toast.warning("Login Required", "Please sign in to add items to cart");
+      return;
+    }
+
+    try {
+      // Use Zustand store with optimistic update
+      const { error } = await addToCartAsync(user.id, product.id, 1);
+
+      if (error) {
+        toast.error("Could not add product to cart");
+        console.error("Add to cart error:", error);
+        return;
+      }
+
+      toast.addedToCart(product.name);
+    } catch (error) {
+      console.error("Error adding to cart:", error);
+      toast.error("Something went wrong. Please try again.");
+    }
   };
 
   const renderHeader = () => (
@@ -133,12 +145,7 @@ const WishlistScreen: React.FC<WishlistScreenProps> = ({ navigation }) => {
         <Ionicons name="arrow-back" size={24} color={COLORS.text} />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>Wishlist</Text>
-      <View style={styles.headerRight}>
-        <Text style={styles.itemCount}>
-          {wishlistItems.length}{" "}
-          {wishlistItems.length === 1 ? "product" : "products"}
-        </Text>
-      </View>
+      <View style={styles.headerRight} />
     </View>
   );
 
@@ -291,9 +298,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...TYPOGRAPHY.h3,
     color: COLORS.text,
+    flex: 1,
+    textAlign: 'center',
   },
   headerRight: {
-    alignItems: "flex-end",
+    width: 40,
   },
   itemCount: {
     ...TYPOGRAPHY.caption,

@@ -20,6 +20,7 @@ import {
   BORDER_RADIUS,
 } from "../../constants/theme";
 import Button from "../../components/Button";
+import NotificationSettings from "../../components/NotificationSettings";
 
 interface NotificationSettings {
   promotions: boolean;
@@ -229,7 +230,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               "person-outline",
             )}
             {renderActionItem(
-              "Order History",
+              "Orders",
               "View your previous purchases",
               () => navigation.navigate("OrderHistory"),
               "receipt-outline",
@@ -244,8 +245,16 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         )}
 
         {/* Notifications Section */}
-        {renderSection(
-          "Notifications",
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <View style={styles.sectionContent}>
+            <NotificationSettings />
+          </View>
+        </View>
+
+        {/* Old notification settings - keeping for backward compatibility */}
+        {false && renderSection(
+          "Notifications (Legacy)",
           <>
             {renderSettingItem(
               "Promotions",

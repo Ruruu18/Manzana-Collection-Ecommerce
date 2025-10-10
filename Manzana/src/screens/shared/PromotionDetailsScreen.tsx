@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,7 +21,6 @@ import {
   BORDER_RADIUS,
 } from "../../constants/theme";
 import { formatCurrency, optimizeImageUrl, formatDate } from "../../utils";
-import LoadingState from "../../components/LoadingState";
 import Button from "../../components/Button";
 
 const { width: screenWidth } = Dimensions.get("window");
@@ -40,30 +38,25 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { user } = useAuth();
   const { promotionId } = route.params;
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
   const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [applicableProducts, setApplicableProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadPromotionDetails();
   }, [promotionId]);
 
+  useEffect(() => {
+    if (promotion) {
+      fetchApplicableProducts();
+    }
+  }, [promotion]);
+
   const loadPromotionDetails = async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchPromotionDetails(), fetchApplicableProducts()]);
-    } catch (error) {
-      console.error("Error loading promotion details:", error);
-      Alert.alert("Error", "Could not load promotion information");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPromotionDetails = async () => {
-    try {
       const { data, error } = await supabase
         .from("promotions")
         .select("*")
@@ -74,36 +67,46 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
       setPromotion(data);
     } catch (error) {
       console.error("Error fetching promotion details:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchApplicableProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from("promotion_products")
-        .select(
-          `
-          product:products(
-            *,
-            images:product_images(url, alt_text, is_primary)
-          )
-        `,
-        )
-        .eq("promotion_id", promotionId);
+      if (!promotion) return;
+
+      let query = supabase.from("products").select(`
+        *,
+        images:product_images(url, alt_text, is_primary)
+      `);
+
+      // Check if promotion applies to specific products
+      if (promotion.applicable_to === 'product' && promotion.applicable_ids?.length > 0) {
+        query = query.in("id", promotion.applicable_ids);
+      } else if (promotion.applicable_to === 'category' && promotion.applicable_ids?.length > 0) {
+        query = query.in("category_id", promotion.applicable_ids);
+      } else {
+        // Promotion applies to all products - fetch featured or recent products
+        query = query
+          .eq("is_active", true)
+          .order("is_featured", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(10);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
-      const products =
-        data?.map((item: any) => ({
-          ...item.product,
-          images:
-            item.product?.images?.sort(
-              (a: any, b: any) =>
-                (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0),
-            ) || [],
-        })) || [];
+      const products = data?.map((product: any) => ({
+        ...product,
+        images: product?.images?.sort(
+          (a: any, b: any) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0)
+        ) || [],
+      })) || [];
 
-      setApplicableProducts(products as Product[]);
+      setApplicableProducts(products);
     } catch (error) {
       console.error("Error fetching applicable products:", error);
     }
@@ -116,7 +119,7 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
       case "percentage":
         return `${promotion.discount_value}% OFF`;
       case "fixed_amount":
-        return `$${promotion.discount_value} OFF`;
+        return `₱${promotion.discount_value} OFF`;
       case "buy_x_get_y":
         return `Buy ${(promotion as any).buy_quantity || 2} Get ${(promotion as any).get_quantity || 1}`;
       case "free_shipping":
@@ -127,35 +130,34 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
   };
 
   const getTimeRemaining = () => {
-    if (!promotion?.end_date) return null;
+    if (!promotion) return null;
 
     const now = new Date();
     const endDate = new Date(promotion.end_date);
-    const timeDiff = endDate.getTime() - now.getTime();
+    const startDate = new Date(promotion.start_date);
 
-    if (timeDiff <= 0) return "Promotion expired";
-
-    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(
-      (timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
-    );
-    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (days > 0) return `${days}d ${hours}h remaining`;
-    if (hours > 0) return `${hours}h ${minutes}m remaining`;
-    return `${minutes}m remaining`;
+    if (now < startDate) {
+      const timeUntilStart = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return `Starts in ${timeUntilStart} day${timeUntilStart !== 1 ? 's' : ''}`;
+    } else if (now > endDate) {
+      return "Expired";
+    } else {
+      const timeRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return `${timeRemaining} day${timeRemaining !== 1 ? 's' : ''} remaining`;
+    }
   };
 
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity
-        style={styles.backButton}
+        style={styles.headerButton}
         onPress={() => navigation.goBack()}
       >
-        <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+        <Ionicons name="arrow-back" size={24} color={COLORS.text} />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.shareButton}>
-        <Ionicons name="share-outline" size={24} color={COLORS.white} />
+      <Text style={styles.headerTitle}>Promotion Details</Text>
+      <TouchableOpacity style={styles.headerButton}>
+        <Ionicons name="share-outline" size={24} color={COLORS.text} />
       </TouchableOpacity>
     </View>
   );
@@ -197,15 +199,6 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
       )}
 
       <Text style={styles.promotionDescription}>{promotion?.description}</Text>
-
-      {(promotion as any)?.terms_and_conditions && (
-        <View style={styles.termsContainer}>
-          <Text style={styles.termsTitle}>Terms and Conditions:</Text>
-          <Text style={styles.termsText}>
-            {(promotion as any).terms_and_conditions}
-          </Text>
-        </View>
-      )}
 
       <View style={styles.validityContainer}>
         <Text style={styles.validityTitle}>Valid from:</Text>
@@ -284,9 +277,11 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
 
   if (loading) {
     return (
-      <LoadingState loading={loading} emptyMessage="Loading promotion details">
-        {null}
-      </LoadingState>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>Loading promotion details...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -297,14 +292,14 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
           <Ionicons
             name="alert-circle-outline"
             size={64}
-            color={COLORS.error}
+            color={COLORS.textSecondary}
           />
-          <Text style={styles.errorTitle}>Promotion not found</Text>
+          <Text style={styles.errorTitle}>Promotion Not Found</Text>
           <Text style={styles.errorSubtitle}>
-            The promotion you're looking for doesn't exist or has been deleted
+            The promotion you're looking for doesn't exist or has been removed.
           </Text>
           <Button
-            title="Go Back"
+            title="Back to Promotions"
             onPress={() => navigation.goBack()}
             style={styles.backToPromotionsButton}
           />
@@ -314,7 +309,9 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {renderHeader()}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -324,8 +321,6 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
         {renderPromotionInfo()}
         {applicableProducts.length > 0 && renderApplicableProducts()}
       </ScrollView>
-
-      {renderHeader()}
 
       <View style={styles.bottomActions}>
         <Button
@@ -347,34 +342,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100, // Space for bottom actions
+    paddingBottom: 100,
   },
   header: {
-    position: "absolute",
-    top: 50,
-    left: 0,
-    right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: SPACING.lg,
-    zIndex: 10,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  backButton: {
+  headerButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    backgroundColor: COLORS.surface,
     justifyContent: "center",
     alignItems: "center",
   },
-  shareButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    justifyContent: "center",
-    alignItems: "center",
+  headerTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text,
+    fontWeight: "bold",
   },
   imageContainer: {
     position: "relative",
@@ -392,7 +383,7 @@ const styles = StyleSheet.create({
   },
   discountBadge: {
     position: "absolute",
-    top: SPACING.lg,
+    bottom: SPACING.lg,
     right: SPACING.lg,
     backgroundColor: COLORS.error,
     paddingHorizontal: SPACING.md,
@@ -429,23 +420,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     lineHeight: 24,
     marginBottom: SPACING.lg,
-  },
-  termsContainer: {
-    backgroundColor: COLORS.surface,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.lg,
-  },
-  termsTitle: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.text,
-    fontWeight: "600",
-    marginBottom: SPACING.sm,
-  },
-  termsText: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
   },
   validityContainer: {
     borderTopWidth: 1,

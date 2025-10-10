@@ -1,65 +1,35 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useState, useEffect, useRef } from "react";
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  time: string;
-  read: boolean;
-}
+import { useAdminNotifications } from "../hooks/useAdminNotifications";
+import "../styles/sidebar-enhancement.css";
+import "../styles/notification-modal.css";
 
 export default function AdminLayout() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<any>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      title: "New Order Received",
-      message: "Order #12345 has been placed by John Doe",
-      type: "info",
-      time: "2 minutes ago",
-      read: false
-    },
-    {
-      id: "2", 
-      title: "Low Stock Alert",
-      message: "Product 'Summer Dress' is running low on stock",
-      type: "warning",
-      time: "1 hour ago",
-      read: false
-    },
-    {
-      id: "3",
-      title: "Payment Confirmed",
-      message: "Payment for order #12344 has been confirmed",
-      type: "success", 
-      time: "3 hours ago",
-      read: true
-    }
-  ]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  // Use real notification system
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    requestNotificationPermission,
+    getRelativeTime
+  } = useAdminNotifications();
 
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
-    );
-  };
+  // Request browser notification permission on mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, [requestNotificationPermission]);
 
-  const markAllAsRead = () => {
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read: true }))
-    );
-  };
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
+  const getNotificationIcon = (severity: string) => {
+    switch (severity) {
       case 'success': return '✅';
       case 'warning': return '⚠️';
       case 'error': return '❌';
@@ -91,8 +61,12 @@ export default function AdminLayout() {
     <div className="admin-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="logo">🛍️</div>
-          <div className="brand-text">Manzana Admin</div>
+          <img
+            src="/images/MANZANA-LOGO.png"
+            alt="Manzana Collection"
+            className="brand-logo-img"
+            style={{ width: '160px', height: 'auto' }}
+          />
         </div>
 
         <nav className="nav">
@@ -122,14 +96,6 @@ export default function AdminLayout() {
           </NavLink>
 
           <NavLink
-            to="/admin/promotions"
-            className={({ isActive }) => (isActive ? "active" : "")}
-          >
-            <span className="nav-icon">🏷️</span>
-            <span>Promotions</span>
-          </NavLink>
-
-          <NavLink
             to="/admin/orders"
             className={({ isActive }) => (isActive ? "active" : "")}
           >
@@ -137,13 +103,34 @@ export default function AdminLayout() {
             <span>Orders</span>
           </NavLink>
 
-          <NavLink
-            to="/admin/customers"
-            className={({ isActive }) => (isActive ? "active" : "")}
-          >
-            <span className="nav-icon">👥</span>
-            <span>Customers</span>
-          </NavLink>
+          {/* Admin-only navigation items */}
+          {isAdmin && (
+            <>
+              <NavLink
+                to="/admin/promotions"
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                <span className="nav-icon">🏷️</span>
+                <span>Promotions</span>
+              </NavLink>
+
+              <NavLink
+                to="/admin/users"
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                <span className="nav-icon">👥</span>
+                <span>User Management</span>
+              </NavLink>
+
+              <NavLink
+                to="/admin/staff"
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                <span className="nav-icon">👨‍💼</span>
+                <span>Staff Management</span>
+              </NavLink>
+            </>
+          )}
         </nav>
 
 
@@ -186,13 +173,17 @@ export default function AdminLayout() {
                       </div>
                     ) : (
                       notifications.map((notification) => (
-                        <div 
+                        <div
                           key={notification.id}
                           className={`notification-item ${!notification.read ? 'unread' : ''}`}
-                          onClick={() => markAsRead(notification.id)}
+                          onClick={() => {
+                            markAsRead(notification.id);
+                            setSelectedNotification(notification);
+                            setShowNotifications(false);
+                          }}
                         >
                           <div className="notification-icon">
-                            {getNotificationIcon(notification.type)}
+                            {getNotificationIcon(notification.severity)}
                           </div>
                           <div className="notification-content">
                             <div className="notification-title">
@@ -202,7 +193,7 @@ export default function AdminLayout() {
                               {notification.message}
                             </div>
                             <div className="notification-time">
-                              {notification.time}
+                              {getRelativeTime(notification.created_at)}
                             </div>
                           </div>
                           {!notification.read && (
@@ -234,7 +225,7 @@ export default function AdminLayout() {
                   <div className="user-name">
                     {user?.email?.split("@")[0] || "Admin"}
                   </div>
-                  <div className="user-role">Administrator</div>
+                  <div className="user-role">{isAdmin ? 'Administrator' : 'Staff Member'}</div>
                 </div>
                 <span className="dropdown-arrow">▼</span>
               </button>
@@ -266,6 +257,62 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Notification View Modal */}
+      {selectedNotification && (
+        <div className="notification-modal-overlay" onClick={() => setSelectedNotification(null)}>
+          <div className="notification-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="notification-modal-header">
+              <div className="notification-modal-icon">
+                {getNotificationIcon(selectedNotification.severity)}
+              </div>
+              <h2>{selectedNotification.title}</h2>
+              <button
+                className="notification-modal-close"
+                onClick={() => setSelectedNotification(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="notification-modal-body">
+              <div className="notification-modal-time">
+                {new Date(selectedNotification.created_at).toLocaleString('en-US', {
+                  dateStyle: 'long',
+                  timeStyle: 'short'
+                })}
+              </div>
+
+              <div className="notification-modal-message">
+                {selectedNotification.message}
+              </div>
+
+              {selectedNotification.data && (
+                <div className="notification-modal-data">
+                  <h4>Details</h4>
+                  <div className="notification-data-grid">
+                    {Object.entries(selectedNotification.data).map(([key, value]) => (
+                      <div key={key} className="notification-data-item">
+                        <span className="data-label">{key.replace(/_/g, ' ')}:</span>
+                        <span className="data-value">{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="notification-modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => setSelectedNotification(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

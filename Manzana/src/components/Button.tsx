@@ -23,6 +23,8 @@ interface ButtonProps {
   style?: ViewStyle;
   textStyle?: TextStyle;
   fullWidth?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -37,6 +39,8 @@ const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   fullWidth = false,
+  accessibilityLabel,
+  accessibilityHint,
 }) => {
   const handlePress = () => {
     if (!disabled && !loading) {
@@ -225,6 +229,10 @@ const Button: React.FC<ButtonProps> = ({
       onPress={handlePress}
       disabled={disabled || loading}
       activeOpacity={disabled || loading ? 1 : 0.7}
+      accessibilityLabel={accessibilityLabel || title}
+      accessibilityHint={accessibilityHint}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || loading }}
     >
       {renderContent()}
     </TouchableOpacity>
