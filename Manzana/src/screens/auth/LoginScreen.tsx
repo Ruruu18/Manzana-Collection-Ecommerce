@@ -128,7 +128,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.title}>Manzana Collection</Text>
+            <Text style={styles.title}>Manzana Collecion</Text>
             <Text style={styles.subtitle}>Welcome back</Text>
           </View>
 

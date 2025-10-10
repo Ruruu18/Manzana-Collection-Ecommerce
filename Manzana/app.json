@@ -1,14 +1,14 @@
 {
   "expo": {
     "name": "Manzana Collection",
-    "slug": "manzana-collection",
+    "slug": "manzan-collecion",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/MANZANA-ICON.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#D4587A"
     },
@@ -22,7 +22,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#D4587A"
       },
       "package": "com.manzana.collection",
       "permissions": [
@@ -60,7 +60,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "ad21d7ba-5062-448a-ac2c-19e369325727"
       }
     }
   }
