@@ -21,7 +21,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, toast } from '../../utils';
 import { fetchActivePromotions, getProductFinalPrice } from '../../utils/cartPromotionUtils';
-import { Promotion } from '../../types';
+import { Promotion, Cart as CartItem } from '../../types';
 
 const { width } = Dimensions.get('window');
 const ITEM_IMAGE_SIZE = width > 400 ? 100 : 80;
@@ -395,6 +395,9 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   headerSpacer: {
+    width: 40,
+  },
+  headerRight: {
     width: 40,
   },
   loadingContainer: {
