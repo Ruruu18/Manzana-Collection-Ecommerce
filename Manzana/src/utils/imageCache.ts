@@ -291,7 +291,7 @@ export const prefetchImages = async (
 /**
  * Schedule periodic cache cleanup
  */
-export const scheduleCache Cleanup = (intervalMs: number = 24 * 60 * 60 * 1000): () => void => {
+export const scheduleCacheCleanup = (intervalMs: number = 24 * 60 * 60 * 1000): () => void => {
   const cleanup = async () => {
     console.log('Running scheduled cache cleanup...');
 
