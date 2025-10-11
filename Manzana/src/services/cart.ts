@@ -22,6 +22,19 @@ export const cartService = {
     variantId?: string
   ) {
     try {
+      // First, check product stock availability
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('stock_quantity, name')
+        .eq('id', productId)
+        .single();
+
+      if (productError) throw productError;
+
+      if (!product || product.stock_quantity === 0) {
+        return { data: null, error: 'Product is out of stock' };
+      }
+
       // Check if item already in cart
       let query = supabase
         .from('cart')
@@ -43,11 +56,20 @@ export const cartService = {
       }
 
       if (existing) {
+        // Check if new quantity exceeds stock
+        const newQuantity = existing.quantity + quantity;
+        if (newQuantity > product.stock_quantity) {
+          return {
+            data: null,
+            error: `Only ${product.stock_quantity} items available. You already have ${existing.quantity} in cart.`
+          };
+        }
+
         // Update quantity
         const { data, error } = await supabase
           .from('cart')
           .update({
-            quantity: existing.quantity + quantity,
+            quantity: newQuantity,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
@@ -57,6 +79,13 @@ export const cartService = {
         if (error) throw error;
         return { data, error: null };
       } else {
+        // Check if requested quantity exceeds stock
+        if (quantity > product.stock_quantity) {
+          return {
+            data: null,
+            error: `Only ${product.stock_quantity} items available`
+          };
+        }
         // Add new item
         const insertData: any = {
           user_id: userId,
@@ -144,6 +173,32 @@ export const cartService = {
     try {
       if (quantity <= 0) {
         return this.removeItem(cartItemId);
+      }
+
+      // Get cart item to check product stock
+      const { data: cartItem, error: cartError } = await supabase
+        .from('cart')
+        .select('product_id')
+        .eq('id', cartItemId)
+        .single();
+
+      if (cartError) throw cartError;
+
+      // Check product stock
+      const { data: product, error: productError } = await supabase
+        .from('products')
+        .select('stock_quantity, name')
+        .eq('id', cartItem.product_id)
+        .single();
+
+      if (productError) throw productError;
+
+      // Validate quantity against stock
+      if (quantity > product.stock_quantity) {
+        return {
+          data: null,
+          error: `Only ${product.stock_quantity} items available`
+        };
       }
 
       const { data, error } = await supabase

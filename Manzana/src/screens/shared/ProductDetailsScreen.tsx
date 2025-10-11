@@ -25,6 +25,7 @@ import { formatCurrency, calculateDiscountPercentage, toast, getCategoryIcon } f
 import { ProductDetailsScreenProps, Product, HomeStackParamList } from '../../types';
 import { cartService } from '../../services/cart';
 import { supabase } from '../../services/supabase';
+import ProductReviewsSection from '../../components/ProductReviewsSection';
 
 const { width } = Dimensions.get('window');
 
@@ -225,7 +226,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
       }
 
       // Navigate directly to checkout
-      navigation.navigate('Checkout');
+      (navigation as any).navigate('Checkout');
     } catch (error) {
       console.error('Buy now error:', error);
       toast.error('Failed to proceed. Please try again.');
@@ -330,7 +331,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
         <Text style={styles.headerTitle}>Product Details</Text>
         <TouchableOpacity
           style={styles.headerButton}
-          onPress={() => navigation.navigate('Cart')}
+          onPress={() => (navigation as any).navigate('Cart')}
         >
           <Ionicons name="cart-outline" size={24} color={COLORS.text} />
           {cartCount > 0 && (
@@ -486,6 +487,9 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
               </View>
             </View>
           )}
+
+          {/* Customer Reviews */}
+          <ProductReviewsSection productId={product.id} />
 
           {/* Similar Products / You May Also Like */}
           {similarProducts.length > 0 && (

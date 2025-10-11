@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 // Get environment variables from Expo
@@ -21,9 +22,10 @@ const hasValidCredentials =
   supabaseAnonKey.trim() !== "" &&
   supabaseUrl.includes("supabase.co");
 
-// Create Supabase client
+// Create Supabase client with AsyncStorage for session persistence
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
+    storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

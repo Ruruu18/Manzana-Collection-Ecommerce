@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "106747510781",
+    "project_id": "manzana-6e94f",
+    "storage_bucket": "manzana-6e94f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:106747510781:android:092877d4985d7168c8a394",
+        "android_client_info": {
+          "package_name": "com.manzana.collection"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlc7UFS2cZNto5n2TJ4kjAo6Fi1WHyiA4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

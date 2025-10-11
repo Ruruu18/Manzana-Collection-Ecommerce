@@ -3,8 +3,8 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Platform } from "react-native";
-import { COLORS, TYPOGRAPHY } from "../constants/theme";
+import { Platform, Dimensions } from "react-native";
+import { COLORS } from "../constants/theme";
 
 // Main Screens
 import HomeScreen from "../screens/main/home/HomeScreen";
@@ -26,6 +26,10 @@ import CartScreen from "../screens/shared/CartScreen";
 import NotificationDetailsScreen from "../screens/shared/NotificationDetailsScreen";
 import EditProfileScreen from "../screens/shared/EditProfileScreen";
 import OrderHistoryScreen from "../screens/shared/OrderHistoryScreen";
+import OrderDetailsScreen from "../screens/shared/OrderDetailsScreen";
+import OrderTrackingScreen from "../screens/shared/OrderTrackingScreen";
+import CheckoutScreen from "../screens/shared/CheckoutScreen";
+import OrderConfirmationScreen from "../screens/shared/OrderConfirmationScreen";
 import HelpCenterScreen from "../screens/shared/HelpCenterScreen";
 import ContactScreen from "../screens/shared/ContactScreen";
 import TermsAndConditionsScreen from "../screens/shared/TermsAndConditionsScreen";
@@ -67,6 +71,8 @@ function HomeNavigator() {
       />
       <HomeStack.Screen name="Categories" component={CategoriesScreen as any} />
       <HomeStack.Screen name="Cart" component={CartScreen as any} />
+      <HomeStack.Screen name="Checkout" component={CheckoutScreen as any} />
+      <HomeStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen as any} />
       <HomeStack.Screen name="Search" component={SearchScreen as any} />
     </HomeStack.Navigator>
   );
@@ -89,6 +95,9 @@ function CatalogNavigator() {
         name="ProductDetails"
         component={ProductDetailsScreen as any}
       />
+      <CatalogStack.Screen name="Cart" component={CartScreen as any} />
+      <CatalogStack.Screen name="Checkout" component={CheckoutScreen as any} />
+      <CatalogStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen as any} />
       <CatalogStack.Screen name="Search" component={SearchScreen as any} />
     </CatalogStack.Navigator>
   );
@@ -115,6 +124,9 @@ function PromotionsNavigator() {
         name="ProductDetails"
         component={ProductDetailsScreen as any}
       />
+      <PromotionsStack.Screen name="Cart" component={CartScreen as any} />
+      <PromotionsStack.Screen name="Checkout" component={CheckoutScreen as any} />
+      <PromotionsStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen as any} />
     </PromotionsStack.Navigator>
   );
 }
@@ -136,6 +148,30 @@ function NotificationsNavigator() {
         name="NotificationDetails"
         component={NotificationDetailsScreen as any}
       />
+      <NotificationsStack.Screen
+        name="OrderDetails"
+        component={OrderDetailsScreen as any}
+      />
+      <NotificationsStack.Screen
+        name="ProductDetails"
+        component={ProductDetailsScreen as any}
+      />
+      <NotificationsStack.Screen
+        name="PromotionDetails"
+        component={PromotionDetailsScreen as any}
+      />
+      <NotificationsStack.Screen
+        name="Cart"
+        component={CartScreen as any}
+      />
+      <NotificationsStack.Screen
+        name="Checkout"
+        component={CheckoutScreen as any}
+      />
+      <NotificationsStack.Screen
+        name="OrderConfirmation"
+        component={OrderConfirmationScreen as any}
+      />
     </NotificationsStack.Navigator>
   );
 }
@@ -154,11 +190,17 @@ function ProfileNavigator() {
       <ProfileStack.Screen name="Wishlist" component={WishlistScreen} />
       <ProfileStack.Screen name="StockAlerts" component={StockAlertsScreen} />
       <ProfileStack.Screen name="OrderHistory" component={OrderHistoryScreen} />
+      <ProfileStack.Screen name="OrderDetails" component={OrderDetailsScreen as any} />
+      <ProfileStack.Screen name="OrderTracking" component={OrderTrackingScreen as any} />
+      <ProfileStack.Screen name="ProductDetails" component={ProductDetailsScreen as any} />
       <ProfileStack.Screen name="EditProfile" component={EditProfileScreen} />
       <ProfileStack.Screen name="HelpCenter" component={HelpCenterScreen} />
       <ProfileStack.Screen name="Contact" component={ContactScreen} />
       <ProfileStack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
       <ProfileStack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+      <ProfileStack.Screen name="Cart" component={CartScreen as any} />
+      <ProfileStack.Screen name="Checkout" component={CheckoutScreen as any} />
+      <ProfileStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen as any} />
     </ProfileStack.Navigator>
   );
 }
@@ -166,20 +208,41 @@ function ProfileNavigator() {
 // Main Tab Navigator
 const TabNavigator = () => {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-  // Responsive calculations - optimized for all devices
-  const tabBarHeight = Platform.select({
-    ios: 50 + insets.bottom, // 50px content + safe area
-    android: 60,
-    default: 60,
-  });
-  const iconSize = 24;
-  const labelFontSize = 11;
+  // Responsive calculations - optimized for all Android devices
+  const isSmallDevice = screenHeight < 600 || screenWidth < 360;
+  const isMediumDevice = screenHeight >= 600 && screenHeight < 800;
+
+  // Dynamic tab bar height based on device size
+  const getTabBarHeight = () => {
+    if (Platform.OS === 'ios') {
+      return isSmallDevice ? 55 + insets.bottom : 60 + insets.bottom;
+    }
+    // Android: adjust based on device size and safe area
+    const baseHeight = isSmallDevice ? 56 : isMediumDevice ? 60 : 65;
+    // Add extra padding for devices with bottom navigation bar
+    return baseHeight + Math.max(insets.bottom, 0);
+  };
+
+  // Dynamic icon size based on device
+  const iconSize = isSmallDevice ? 22 : isMediumDevice ? 24 : 26;
+
+  // Dynamic label font size
+  const labelFontSize = isSmallDevice ? 10 : isMediumDevice ? 11 : 12;
+
+  const tabBarHeight = getTabBarHeight();
 
   return (
     <MainTab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        // Ensure content is above tab bar on Android
+        ...(Platform.OS === 'android' && {
+          sceneContainerStyle: {
+            paddingBottom: 0,
+          },
+        }),
         tabBarIcon: ({ focused, color }) => {
           let iconName: string;
 
@@ -206,8 +269,9 @@ const TabNavigator = () => {
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
           height: tabBarHeight,
-          paddingBottom: insets.bottom,
-          paddingTop: 5,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : Math.max(insets.bottom, 8),
+          paddingTop: Platform.OS === 'android' ? 8 : 5,
+          paddingHorizontal: Platform.OS === 'android' ? 4 : 0,
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
@@ -217,43 +281,62 @@ const TabNavigator = () => {
         tabBarLabelStyle: {
           fontSize: labelFontSize,
           fontWeight: "600",
-          marginTop: 0,
-          marginBottom: 0,
+          marginTop: isSmallDevice ? -2 : 0,
+          marginBottom: Platform.OS === 'android' ? 4 : 0,
         },
         tabBarIconStyle: {
-          marginTop: 0,
+          marginTop: isSmallDevice ? 2 : 4,
+          marginBottom: 0,
         },
         tabBarItemStyle: {
-          height: 50,
-          paddingTop: 5,
-          paddingBottom: 0,
+          height: tabBarHeight - (Platform.OS === 'ios' ? insets.bottom : 8),
+          paddingVertical: isSmallDevice ? 2 : 4,
+          justifyContent: 'center',
+          alignItems: 'center',
         },
+        // Add safe rendering on Android
+        tabBarHideOnKeyboard: Platform.OS === 'android',
       })}
     >
       <MainTab.Screen
         name="Home"
         component={HomeNavigator}
-        options={{ tabBarLabel: "Home" }}
+        options={{
+          tabBarLabel: "Home",
+          unmountOnBlur: true,
+        }}
       />
       <MainTab.Screen
         name="Catalog"
         component={CatalogNavigator}
-        options={{ tabBarLabel: "Catalog" }}
+        options={{
+          tabBarLabel: "Catalog",
+          unmountOnBlur: true,
+        }}
       />
       <MainTab.Screen
         name="Promotions"
         component={PromotionsNavigator}
-        options={{ tabBarLabel: "Promotions" }}
+        options={{
+          tabBarLabel: "Promotions",
+          unmountOnBlur: true,
+        }}
       />
       <MainTab.Screen
         name="Notifications"
         component={NotificationsNavigator}
-        options={{ tabBarLabel: "Notifications" }}
+        options={{
+          tabBarLabel: "Notifications",
+          unmountOnBlur: true,
+        }}
       />
       <MainTab.Screen
         name="Profile"
         component={ProfileNavigator}
-        options={{ tabBarLabel: "Profile" }}
+        options={{
+          tabBarLabel: "Profile",
+          unmountOnBlur: true,
+        }}
       />
     </MainTab.Navigator>
   );

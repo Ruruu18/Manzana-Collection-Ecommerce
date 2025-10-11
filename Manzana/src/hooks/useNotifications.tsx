@@ -47,8 +47,10 @@ export const useNotifications = (): UseNotificationsReturn => {
         return;
       }
 
-      // Get push notification token
-      const token = await ExpoNotifications.getExpoPushTokenAsync();
+      // Get push notification token with project ID for standalone builds
+      const token = await ExpoNotifications.getExpoPushTokenAsync({
+        projectId: 'ad21d7ba-5062-448a-ac2c-19e369325727',
+      });
 
       // Save token to user profile
       await supabase
@@ -73,6 +75,40 @@ export const useNotifications = (): UseNotificationsReturn => {
             options: { opensAppToForeground: true },
           },
         ]);
+      }
+
+      // Set notification channels for Android
+      if (Platform.OS === "android") {
+        await ExpoNotifications.setNotificationChannelAsync("default", {
+          name: "Default Notifications",
+          importance: ExpoNotifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#D4587A",
+        });
+
+        await ExpoNotifications.setNotificationChannelAsync("promotions", {
+          name: "Promotions",
+          importance: ExpoNotifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#D4587A",
+          sound: "default",
+        });
+
+        await ExpoNotifications.setNotificationChannelAsync("stock_alerts", {
+          name: "Stock Alerts",
+          importance: ExpoNotifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#D4587A",
+          sound: "default",
+        });
+
+        await ExpoNotifications.setNotificationChannelAsync("orders", {
+          name: "Order Updates",
+          importance: ExpoNotifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#D4587A",
+          sound: "default",
+        });
       }
     } catch (error) {
 
@@ -194,6 +230,17 @@ export const useNotifications = (): UseNotificationsReturn => {
   const showLocalNotification = async (notification: Notification) => {
     try {
       console.log("🔔 Showing local notification:", notification.title);
+
+      // Determine Android channel based on notification type
+      let androidChannelId = "default";
+      if (notification.type === "promotion") {
+        androidChannelId = "promotions";
+      } else if (notification.type === "stock_alert") {
+        androidChannelId = "stock_alerts";
+      } else if (notification.type === "order_update") {
+        androidChannelId = "orders";
+      }
+
       await ExpoNotifications.scheduleNotificationAsync({
         content: {
           title: notification.title,
@@ -204,6 +251,9 @@ export const useNotifications = (): UseNotificationsReturn => {
             ...notification.data,
           },
           categoryIdentifier: notification.type,
+          ...(Platform.OS === "android" && {
+            channelId: androidChannelId,
+          }),
         },
         trigger: null, // Show immediately
       });

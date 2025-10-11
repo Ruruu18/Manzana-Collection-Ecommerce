@@ -313,6 +313,41 @@ export const orderService = {
   },
 
   /**
+   * Update order status (admin/staff only)
+   * Automatically creates notification via database trigger
+   *
+   * Status flow for PICKUP orders:
+   * pending → confirmed → processing → ready → completed
+   */
+  async updateOrderStatus(
+    orderId: string,
+    newStatus: 'pending' | 'confirmed' | 'processing' | 'ready' | 'completed' | 'cancelled',
+    updatedBy?: string
+  ) {
+    try {
+      // Update order status
+      const { data, error } = await supabase
+        .from('orders')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .select('*, users(id, full_name, email, push_token)')
+        .single();
+
+      if (error) throw error;
+
+      // Database trigger will automatically create notification
+      // No need to manually insert notification here
+
+      return { data, error: null };
+    } catch (error: any) {
+      return { data: null, error: error.message };
+    }
+  },
+
+  /**
    * Cancel order (customer or admin)
    */
   async cancelOrder(orderId: string, userId: string) {

@@ -244,9 +244,16 @@ const CartScreen = () => {
       </Text>
       <TouchableOpacity
         style={styles.shopButton}
-        onPress={() => navigation.navigate('Home' as never)}
+        onPress={() => {
+          // Navigate back first, then jump to Catalog tab
+          navigation.goBack();
+          // Use a timeout to ensure the back navigation completes first
+          setTimeout(() => {
+            (navigation as any).getParent()?.navigate('Catalog');
+          }, 100);
+        }}
         accessibilityLabel="Start shopping"
-        accessibilityHint="Double tap to go to home and browse products"
+        accessibilityHint="Double tap to go to catalog and browse products"
         accessibilityRole="button"
       >
         <Text style={styles.shopButtonText}>Start Shopping</Text>

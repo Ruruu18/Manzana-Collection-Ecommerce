@@ -13,9 +13,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { cartService } from '../../services/cart';
+import { reviewsService } from '../../services/reviews';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/theme';
 import { formatCurrency, formatDate } from '../../utils';
 import Button from '../../components/Button';
+import ReviewModal from '../../components/ReviewModal';
 import { useAuth } from '../../hooks/useAuth';
 
 interface OrderDetailsScreenProps {
@@ -34,6 +36,9 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [reviewableProducts, setReviewableProducts] = useState<any[]>([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   useEffect(() => {
     loadOrderDetails();
@@ -61,6 +66,15 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
 
       if (error) throw error;
       setOrder(data);
+
+      // Load reviewable products if order is delivered/completed
+      if (user && (data.status === 'delivered' || data.status === 'completed')) {
+        const { data: products } = await reviewsService.getReviewableProductsFromOrder(
+          user.id,
+          orderId
+        );
+        setReviewableProducts(products || []);
+      }
     } catch (err) {
       console.error('Error loading order:', err);
       setError('Failed to load order details');
@@ -136,6 +150,20 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
       Alert.alert('Error', 'Failed to reorder. Please try again.');
     } finally {
       setReordering(false);
+    }
+  };
+
+  const handleReviewProduct = (product: any) => {
+    setSelectedProduct(product);
+    setShowReviewModal(true);
+  };
+
+  const handleReviewSubmitted = () => {
+    // Reload reviewable products to update the list
+    if (user) {
+      reviewsService.getReviewableProductsFromOrder(user.id, orderId).then(({ data }) => {
+        setReviewableProducts(data || []);
+      });
     }
   };
 
@@ -322,7 +350,68 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
             <Text style={styles.notesText}>{order.pickup_notes}</Text>
           </View>
         )}
+
+        {/* Review Products Section */}
+        {reviewableProducts.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.reviewHeader}>
+              <Ionicons name="star" size={24} color={COLORS.warning} />
+              <Text style={styles.sectionTitle}>Review Your Products</Text>
+            </View>
+            <Text style={styles.reviewSubtitle}>
+              Share your experience to help other customers
+            </Text>
+
+            {reviewableProducts.map((product, index) => (
+              <View key={product.productId} style={styles.reviewableProduct}>
+                {product.productImage ? (
+                  <Image
+                    source={{ uri: product.productImage }}
+                    style={styles.reviewProductImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.reviewProductImagePlaceholder}>
+                    <Ionicons name="image-outline" size={24} color={COLORS.textSecondary} />
+                  </View>
+                )}
+
+                <View style={styles.reviewProductDetails}>
+                  <Text style={styles.reviewProductName} numberOfLines={2}>
+                    {product.productName}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.writeReviewButton}
+                    onPress={() => handleReviewProduct(product)}
+                  >
+                    <Ionicons name="create-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.writeReviewText}>Write Review</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* Review Modal */}
+      {selectedProduct && (
+        <ReviewModal
+          visible={showReviewModal}
+          onClose={() => {
+            setShowReviewModal(false);
+            setSelectedProduct(null);
+          }}
+          productId={selectedProduct.productId}
+          productName={selectedProduct.productName}
+          productImage={selectedProduct.productImage}
+          userId={user?.id || ''}
+          onReviewSubmitted={handleReviewSubmitted}
+        />
+      )}
 
       {/* Action Buttons */}
       <View style={styles.actionBar}>
@@ -551,6 +640,58 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.text,
     fontStyle: 'italic',
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  reviewSubtitle: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  reviewableProduct: {
+    flexDirection: 'row',
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  reviewProductImage: {
+    width: 60,
+    height: 60,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  reviewProductImagePlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewProductDetails: {
+    flex: 1,
+    marginLeft: SPACING.md,
+    justifyContent: 'space-between',
+  },
+  reviewProductName: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: SPACING.sm,
+  },
+  writeReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    alignSelf: 'flex-start',
+  },
+  writeReviewText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   actionBar: {
     flexDirection: 'row',

@@ -7,14 +7,11 @@ export interface Review {
   rating: number;
   title?: string;
   comment?: string;
-  helpful_count: number;
-  verified_purchase: boolean;
   created_at: string;
   updated_at: string;
   user?: {
     id: string;
     full_name: string;
-    avatar_url?: string;
   };
 }
 
@@ -37,13 +34,12 @@ export const reviewsService = {
   async getProductReviews(productId: string, limit: number = 10, offset: number = 0) {
     try {
       const { data, error } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .select(`
           *,
           user:users (
             id,
-            full_name,
-            avatar_url
+            full_name
           )
         `)
         .eq('product_id', productId)
@@ -65,7 +61,7 @@ export const reviewsService = {
   async getProductRatingStats(productId: string): Promise<{ data: ProductRatingStats | null; error: string | null }> {
     try {
       const { data, error } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .select('rating')
         .eq('product_id', productId);
 
@@ -119,13 +115,12 @@ export const reviewsService = {
     productId: string,
     rating: number,
     title?: string,
-    comment?: string,
-    verifiedPurchase: boolean = false
+    comment?: string
   ) {
     try {
       // Check if user already reviewed this product
       const { data: existing } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .select('id')
         .eq('user_id', userId)
         .eq('product_id', productId)
@@ -136,22 +131,19 @@ export const reviewsService = {
       }
 
       const { data, error } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .insert({
           user_id: userId,
           product_id: productId,
           rating,
           title,
           comment,
-          verified_purchase: verifiedPurchase,
-          helpful_count: 0,
         })
         .select(`
           *,
           user:users (
             id,
-            full_name,
-            avatar_url
+            full_name
           )
         `)
         .single();
@@ -176,7 +168,7 @@ export const reviewsService = {
   ) {
     try {
       const { data, error } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .update({
           rating,
           title,
@@ -188,8 +180,7 @@ export const reviewsService = {
           *,
           user:users (
             id,
-            full_name,
-            avatar_url
+            full_name
           )
         `)
         .single();
@@ -209,7 +200,7 @@ export const reviewsService = {
   async deleteReview(reviewId: string) {
     try {
       const { error } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .delete()
         .eq('id', reviewId);
 
@@ -224,29 +215,13 @@ export const reviewsService = {
 
   /**
    * Mark review as helpful
+   * Note: This function is disabled until helpful_count column is added to database
    */
   async markReviewHelpful(reviewId: string) {
     try {
-      // Get current helpful count
-      const { data: review } = await supabase
-        .from('product_reviews')
-        .select('helpful_count')
-        .eq('id', reviewId)
-        .single();
-
-      if (!review) throw new Error('Review not found');
-
-      // Increment helpful count
-      const { error } = await supabase
-        .from('product_reviews')
-        .update({
-          helpful_count: review.helpful_count + 1,
-        })
-        .eq('id', reviewId);
-
-      if (error) throw error;
-
-      return { error: null };
+      // TODO: Implement when helpful_count column is added to reviews table
+      console.log('Mark helpful feature not yet implemented for review:', reviewId);
+      return { error: 'Feature not yet implemented' };
     } catch (error: any) {
       console.error('Mark helpful error:', error);
       return { error: error.message };
@@ -275,7 +250,7 @@ export const reviewsService = {
 
       // Check if user already reviewed
       const { data: existingReview } = await supabase
-        .from('product_reviews')
+        .from('reviews')
         .select('id')
         .eq('user_id', userId)
         .eq('product_id', productId)
@@ -287,6 +262,70 @@ export const reviewsService = {
     } catch (error: any) {
       console.error('Can user review error:', error);
       return { canReview: false, hasPurchased: false };
+    }
+  },
+
+  /**
+   * Get products from order that user can review
+   */
+  async getReviewableProductsFromOrder(userId: string, orderId: string) {
+    try {
+      // Get order items
+      const { data: orderItems, error: orderError } = await supabase
+        .from('order_items')
+        .select(`
+          *,
+          products (
+            id,
+            name,
+            product_images (url, is_primary)
+          )
+        `)
+        .eq('order_id', orderId);
+
+      if (orderError) throw orderError;
+
+      if (!orderItems || orderItems.length === 0) {
+        return { data: [], error: null };
+      }
+
+      // Check which products have already been reviewed
+      const productIds = orderItems.map(item => item.product_id);
+      const { data: existingReviews } = await supabase
+        .from('reviews')
+        .select('product_id')
+        .eq('user_id', userId)
+        .in('product_id', productIds);
+
+      const reviewedProductIds = new Set(existingReviews?.map(r => r.product_id) || []);
+
+      // Filter out already reviewed products
+      const reviewableProducts = orderItems
+        .filter(item => !reviewedProductIds.has(item.product_id))
+        .map(item => ({
+          productId: item.product_id,
+          productName: item.products?.name || 'Product',
+          productImage: item.products?.product_images?.find((img: any) => img.is_primary)?.url ||
+                       item.products?.product_images?.[0]?.url,
+          quantity: item.quantity,
+        }));
+
+      return { data: reviewableProducts, error: null };
+    } catch (error: any) {
+      console.error('Get reviewable products error:', error);
+      return { data: null, error: error.message };
+    }
+  },
+
+  /**
+   * Check if order has any reviewable products
+   */
+  async hasReviewableProducts(userId: string, orderId: string): Promise<boolean> {
+    try {
+      const { data } = await this.getReviewableProductsFromOrder(userId, orderId);
+      return (data && data.length > 0) || false;
+    } catch (error) {
+      return false;
     }
   },
 };

@@ -20,6 +20,7 @@ import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS } from '../../constants/them
 import { useAuth } from '../../hooks/useAuth';
 import { cartService } from '../../services/cart';
 import { orderService } from '../../services/orders';
+import { supabase } from '../../services/supabase';
 import { formatCurrency } from '../../utils';
 import { fetchActivePromotions, getProductFinalPrice } from '../../utils/cartPromotionUtils';
 import { Promotion } from '../../types';
@@ -142,6 +143,48 @@ const CheckoutScreen = () => {
     return true;
   };
 
+  const validateStock = async () => {
+    try {
+      // Check stock for all cart items
+      for (const item of cartItems) {
+        if (!item.product) continue;
+
+        const { data: product, error } = await supabase
+          .from('products')
+          .select('stock_quantity, name')
+          .eq('id', item.product_id)
+          .single();
+
+        if (error) {
+          Alert.alert('Error', 'Failed to verify stock availability');
+          return false;
+        }
+
+        if (!product || product.stock_quantity === 0) {
+          Alert.alert(
+            'Out of Stock',
+            `${product?.name || 'Product'} is currently out of stock. Please remove it from your cart.`
+          );
+          return false;
+        }
+
+        if (item.quantity > product.stock_quantity) {
+          Alert.alert(
+            'Insufficient Stock',
+            `Only ${product.stock_quantity} units of ${product.name} available. You have ${item.quantity} in your cart. Please update your cart.`
+          );
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Stock validation error:', error);
+      Alert.alert('Error', 'Failed to verify stock availability');
+      return false;
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (!validateForm()) return;
 
@@ -149,6 +192,13 @@ const CheckoutScreen = () => {
       Alert.alert('Error', 'You must be logged in to place an order');
       return;
     }
+
+    // Validate stock availability before proceeding
+    setLoading(true);
+    const stockValid = await validateStock();
+    setLoading(false);
+
+    if (!stockValid) return;
 
     Alert.alert(
       'Confirm Order',

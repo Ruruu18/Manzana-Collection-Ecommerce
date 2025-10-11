@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform, StatusBar, StyleSheet } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { COLORS } from "../constants/theme";
 import TabNavigator from "./TabNavigator";
@@ -97,19 +97,37 @@ function RootNavigator() {
 
   if (loading || !hasCheckedFirstTime) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.loadingContainer}>
+        {Platform.OS === 'android' && (
+          <StatusBar
+            backgroundColor={COLORS.background}
+            barStyle="dark-content"
+            translucent={false}
+          />
+        )}
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
   return (
-    <RootStack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: "fade",
-      }}
-    >
+    <>
+      {Platform.OS === 'android' && (
+        <StatusBar
+          backgroundColor={COLORS.background}
+          barStyle="dark-content"
+          translucent={false}
+        />
+      )}
+      <RootStack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: Platform.OS === 'android' ? 'slide_from_right' : 'fade',
+          contentStyle: {
+            backgroundColor: COLORS.background,
+          },
+        }}
+      >
       {!session ? (
         // User is not authenticated
         <>
@@ -132,6 +150,7 @@ function RootNavigator() {
         <RootStack.Screen name="Main" component={TabNavigator} />
       )}
     </RootStack.Navigator>
+    </>
   );
 }
 
@@ -143,3 +162,13 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
+
+// Styles
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+});
