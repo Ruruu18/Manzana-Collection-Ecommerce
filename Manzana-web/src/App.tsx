@@ -11,6 +11,7 @@ import Orders from "./pages/admin/Orders";
 import Customers from "./pages/admin/Customers";
 import StaffManagement from "./pages/admin/StaffManagement";
 import UserManagement from "./pages/admin/UserManagement";
+import Reviews from "./pages/admin/Reviews";
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
             <Route path="customers" element={<Customers />} />
             <Route path="staff" element={<StaffManagement />} />
             <Route path="users" element={<UserManagement />} />
+            <Route path="reviews" element={<Reviews />} />
           </Route>
         </Route>
 

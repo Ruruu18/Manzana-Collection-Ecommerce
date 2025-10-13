@@ -103,6 +103,14 @@ export default function AdminLayout() {
             <span>Orders</span>
           </NavLink>
 
+          <NavLink
+            to="/admin/reviews"
+            className={({ isActive }) => (isActive ? "active" : "")}
+          >
+            <span className="nav-icon">⭐</span>
+            <span>Reviews</span>
+          </NavLink>
+
           {/* Admin-only navigation items */}
           {isAdmin && (
             <>

@@ -122,8 +122,6 @@ const PromotionDetailsScreen: React.FC<PromotionDetailsScreenProps> = ({
         return `₱${promotion.discount_value} OFF`;
       case "buy_x_get_y":
         return `Buy ${(promotion as any).buy_quantity || 2} Get ${(promotion as any).get_quantity || 1}`;
-      case "free_shipping":
-        return "FREE SHIPPING";
       default:
         return "SPECIAL OFFER";
     }

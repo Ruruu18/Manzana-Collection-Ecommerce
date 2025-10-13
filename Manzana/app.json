@@ -29,8 +29,7 @@
         "VIBRATE",
         "POST_NOTIFICATIONS"
       ],
-      "googleServicesFile": "./google-services.json",
-      "useNextNotificationsApi": true
+      "googleServicesFile": "./google-services.json"
     },
     "notification": {
       "icon": "./assets/icon.png",

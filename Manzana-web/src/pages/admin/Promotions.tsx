@@ -4,7 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import "../../styles/dashboard-enhancement.css";
 
-type PromotionType = "percentage" | "fixed_amount" | "buy_x_get_y" | "free_shipping" | "custom";
+type PromotionType = "percentage" | "fixed_amount" | "buy_x_get_y" | "custom";
 
 type Promotion = {
   id: string;
@@ -49,7 +49,7 @@ export default function Promotions() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"standard" | "shipping" | "custom">("standard");
+  const [activeTab, setActiveTab] = useState<"standard" | "custom">("standard");
   const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -139,8 +139,6 @@ export default function Promotions() {
     
     // Validate based on active tab and promotion type
     switch (activeTab) {
-      case "shipping":
-        return !!minOrderValue || minOrderValue === 0;
       case "custom":
         return !!description;
       case "standard":
@@ -179,9 +177,6 @@ export default function Promotions() {
     // Determine promotion type based on active tab
     let finalPromotionType: PromotionType;
     switch (activeTab) {
-      case "shipping":
-        finalPromotionType = "free_shipping";
-        break;
       case "custom":
         finalPromotionType = "custom";
         break;
@@ -209,10 +204,6 @@ export default function Promotions() {
 
     // Handle different promotion types
     switch (activeTab) {
-      case "shipping":
-        promotionData.discount_value = Number(minOrderValue) || 0;
-        promotionData.min_purchase_amount = Number(minOrderValue) || 0;
-        break;
       case "custom":
         promotionData.discount_value = Number(value) || 0;
         promotionData.description = description;
@@ -295,7 +286,6 @@ export default function Promotions() {
       percentage: "💯",
       fixed_amount: "💰",
       buy_x_get_y: "🎁",
-      free_shipping: "🚚",
       custom: "⚙️",
     };
     return icons[type] || "🏷️";
@@ -306,7 +296,6 @@ export default function Promotions() {
       percentage: "Percentage Off",
       fixed_amount: "Fixed Amount",
       buy_x_get_y: "Buy X Get Y",
-      free_shipping: "Free Shipping",
       custom: "Custom Promotion",
     };
     return labels[type] || "Unknown Type";
@@ -320,8 +309,6 @@ export default function Promotions() {
         return `₱${value.toFixed(2)} off`;
       case "buy_x_get_y":
         return `Buy ${value} Get 1`;
-      case "free_shipping":
-        return value > 0 ? `Free shipping on orders ₱${value.toFixed(2)}+` : "Free shipping";
       case "custom":
         return promotion?.description || "Custom offer";
       default:
@@ -384,9 +371,7 @@ export default function Promotions() {
     setSelectedProductIds(promotion.applicable_ids || []);
 
     // Set active tab based on promotion type
-    if (promotion.promotion_type === "free_shipping") {
-      setActiveTab("shipping");
-    } else if (promotion.promotion_type === "custom") {
+    if (promotion.promotion_type === "custom") {
       setActiveTab("custom");
     } else {
       setActiveTab("standard");
@@ -452,7 +437,6 @@ export default function Promotions() {
                   setActiveTab("standard");
                   setType("percentage");
                   setValue("");
-                  setMinOrderValue("");
                   setDescription("");
                 }}
                 style={{
@@ -473,31 +457,8 @@ export default function Promotions() {
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab("shipping");
-                  setValue("");
-                  setDescription("");
-                }}
-                style={{
-                  padding: "var(--spacing-sm) var(--spacing)",
-                  border: "none",
-                  background: activeTab === "shipping" ? "var(--primary)" : "transparent",
-                  color: activeTab === "shipping" ? "white" : "var(--text)",
-                  borderRadius: "var(--radius) var(--radius) 0 0",
-                  cursor: "pointer",
-                  fontWeight: activeTab === "shipping" ? "var(--font-weight-semibold)" : "var(--font-weight-medium)",
-                  transition: "all 0.2s ease",
-                  borderBottom: activeTab === "shipping" ? "2px solid var(--primary)" : "2px solid transparent",
-                  marginBottom: "-2px"
-                }}
-              >
-                🚚 Shipping Offers
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   setActiveTab("custom");
                   setValue("");
-                  setMinOrderValue("");
                 }}
                 style={{
                   padding: "var(--spacing-sm) var(--spacing)",
@@ -583,30 +544,6 @@ export default function Promotions() {
                   </div>
                 </div>
               </>
-            )}
-
-            {/* Shipping Offers Tab */}
-            {activeTab === "shipping" && (
-              <div className="form-group">
-                <label className="form-label">Minimum Order Amount (₱)</label>
-                <input
-                  className="input"
-                  placeholder="50.00 (enter 0 for free shipping on all orders)"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={minOrderValue}
-                  onChange={(e) =>
-                    setMinOrderValue(
-                      e.target.value === "" ? "" : Number(e.target.value),
-                    )
-                  }
-                  required
-                />
-                <small style={{ color: "var(--muted)", fontSize: "12px", marginTop: "4px", display: "block" }}>
-                  Set the minimum order amount to qualify for free shipping
-                </small>
-              </div>
             )}
 
             {/* Custom Promotions Tab */}

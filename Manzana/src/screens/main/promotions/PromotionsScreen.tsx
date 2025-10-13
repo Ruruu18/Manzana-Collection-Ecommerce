@@ -304,8 +304,6 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
           return `${item.discount_value}% OFF`;
         case "fixed_amount":
           return `₱${item.discount_value} OFF`;
-        case "free_shipping":
-          return "FREE SHIPPING";
         case "buy_x_get_y":
           return "BUY & GET";
         default:
@@ -319,8 +317,6 @@ const PromotionsScreen: React.FC<PromotionsScreenProps> = ({ navigation }) => {
           return COLORS.error;
         case "fixed_amount":
           return COLORS.warning;
-        case "free_shipping":
-          return COLORS.success;
         case "buy_x_get_y":
           return COLORS.info;
         default:

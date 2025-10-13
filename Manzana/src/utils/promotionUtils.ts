@@ -150,8 +150,6 @@ export function getPromotionBadgeText(promotion: Promotion): string {
     return `-${promotion.discount_value}%`;
   } else if (promotion.promotion_type === 'fixed_amount') {
     return `-₱${promotion.discount_value}`;
-  } else if (promotion.promotion_type === 'free_shipping') {
-    return 'FREE SHIP';
   } else if (promotion.promotion_type === 'buy_x_get_y') {
     return `${promotion.buy_quantity}+${promotion.get_quantity}`;
   }

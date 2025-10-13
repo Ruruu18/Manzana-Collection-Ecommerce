@@ -184,7 +184,6 @@ export const PROMOTION_TYPES = {
   percentage: "Percentage Discount",
   fixed_amount: "Fixed Amount Discount",
   buy_x_get_y: "Buy X Get Y",
-  free_shipping: "Free Shipping",
 };
 
 export const USER_TYPES = {
