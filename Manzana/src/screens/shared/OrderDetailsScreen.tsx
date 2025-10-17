@@ -65,6 +65,29 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
         .single();
 
       if (error) throw error;
+
+      // Fetch variants for each order item
+      if (data && data.order_items) {
+        const orderItemsWithVariants = await Promise.all(
+          data.order_items.map(async (item: any) => {
+            if (item.variant_ids && item.variant_ids.length > 0) {
+              const { data: variants } = await supabase
+                .from('product_variants')
+                .select('id, name, type, value, price_adjustment')
+                .in('id', item.variant_ids);
+
+              return {
+                ...item,
+                product_variants: variants || []
+              };
+            }
+            return item;
+          })
+        );
+
+        data.order_items = orderItemsWithVariants;
+      }
+
       setOrder(data);
 
       // Load reviewable products if order is delivered/completed
@@ -113,7 +136,7 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
           user.id,
           item.product_id,
           item.quantity,
-          item.product_variant_id
+          item.variant_ids // Now passing array of variant IDs
         );
 
         if (result.error) {
@@ -276,6 +299,20 @@ const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({ navigation, rou
                   <Text style={styles.itemName} numberOfLines={2}>
                     {item.products?.name || 'Product'}
                   </Text>
+
+                  {/* Display variants if available */}
+                  {item.product_variants && item.product_variants.length > 0 && (
+                    <View style={styles.variantContainer}>
+                      {item.product_variants.map((variant: any) => (
+                        <View key={variant.id} style={styles.variantBadge}>
+                          <Text style={styles.variantText}>
+                            {variant.type.charAt(0).toUpperCase() + variant.type.slice(1)}: {variant.value}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
                   <Text style={styles.itemPrice}>
                     {formatCurrency(item.unit_price)} x {item.quantity}
                   </Text>
@@ -587,6 +624,27 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.text,
     fontWeight: '600',
+  },
+  variantContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  variantBadge: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  variantText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    fontSize: 11,
   },
   itemPrice: {
     ...TYPOGRAPHY.bodySmall,

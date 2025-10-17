@@ -1,0 +1,76 @@
+/* Empty State Styles */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  min-height: 400px;
+}
+
+.empty-state-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.empty-state-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 12px 0;
+}
+
+.empty-state-message {
+  font-size: 16px;
+  color: var(--muted);
+  margin: 0 0 32px 0;
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+.empty-state-action {
+  min-width: 180px;
+  margin-bottom: 12px;
+}
+
+.empty-state-secondary {
+  min-width: 180px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .empty-state {
+    padding: 40px 20px;
+    min-height: 300px;
+  }
+
+  .empty-state-icon {
+    font-size: 60px;
+    margin-bottom: 20px;
+  }
+
+  .empty-state-title {
+    font-size: 20px;
+  }
+
+  .empty-state-message {
+    font-size: 14px;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .empty-state * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+.empty-state button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}

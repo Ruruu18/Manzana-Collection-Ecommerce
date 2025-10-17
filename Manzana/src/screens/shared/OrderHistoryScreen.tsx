@@ -108,7 +108,7 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
           order_items (
             id,
             product_id,
-            product_variant_id,
+            variant_ids,
             quantity,
             products (
               name,
@@ -213,7 +213,7 @@ const OrderHistoryScreen: React.FC<OrderHistoryScreenProps> = ({
           user.id,
           item.product_id,
           item.quantity,
-          item.product_variant_id
+          item.variant_ids || []
         );
 
         if (result.error) {

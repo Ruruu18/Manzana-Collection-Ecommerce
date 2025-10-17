@@ -11,6 +11,8 @@ import {
   Dimensions,
   Platform,
   RefreshControl,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +24,9 @@ import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, toast } from '../../utils';
 import { fetchActivePromotions, getProductFinalPrice } from '../../utils/cartPromotionUtils';
 import { Promotion, Cart as CartItem } from '../../types';
+import { supabase } from '../../services/supabase';
+import { ListSkeleton } from '../../components/Skeleton';
+import { EmptyCart } from '../../components/EmptyState';
 
 const { width } = Dimensions.get('window');
 const ITEM_IMAGE_SIZE = width > 400 ? 100 : 80;
@@ -39,8 +44,15 @@ const CartScreen = () => {
     loading,
     loadCart,
     updateQuantityAsync,
+    updateVariantsAsync,
     removeFromCartAsync,
   } = useCartStore();
+
+  // Edit variants modal state
+  const [editingItem, setEditingItem] = useState<CartItem | null>(null);
+  const [availableVariants, setAvailableVariants] = useState<any[]>([]);
+  const [selectedVariants, setSelectedVariants] = useState<Record<string, any>>({});
+  const [loadingVariants, setLoadingVariants] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -110,7 +122,8 @@ const CartScreen = () => {
     return cartItems.reduce((total, item) => {
       if (!item.product) return total;
       const { finalPrice } = getProductFinalPrice(item.product, activePromotions);
-      return total + finalPrice * item.quantity;
+      const variantAdjustment = item.product_variants?.price_adjustment || 0;
+      return total + (finalPrice + variantAdjustment) * item.quantity;
     }, 0);
   }, [cartItems, activePromotions]);
 
@@ -124,13 +137,88 @@ const CartScreen = () => {
     navigation.navigate('Checkout' as never);
   }, [cartItems.length, navigation]);
 
+  const openEditVariants = useCallback(async (item: CartItem) => {
+    if (!item.product_id) return;
+
+    setLoadingVariants(true);
+    setEditingItem(item);
+
+    try {
+      // Fetch all available variants for this product
+      const { data: variants, error } = await supabase
+        .from('product_variants')
+        .select('*')
+        .eq('product_id', item.product_id)
+        .eq('is_active', true)
+        .order('type')
+        .order('value');
+
+      if (error) throw error;
+
+      setAvailableVariants(variants || []);
+
+      // Set currently selected variants
+      const selected: Record<string, any> = {};
+      (item.product_variants || []).forEach((variant: any) => {
+        selected[variant.type] = variant;
+      });
+      setSelectedVariants(selected);
+    } catch (error) {
+      console.error('Error loading variants:', error);
+      toast.error('Failed to load variants');
+      setEditingItem(null);
+    } finally {
+      setLoadingVariants(false);
+    }
+  }, []);
+
+  const handleSelectVariant = useCallback((variant: any) => {
+    setSelectedVariants(prev => ({
+      ...prev,
+      [variant.type]: variant,
+    }));
+  }, []);
+
+  const handleSaveVariants = useCallback(async () => {
+    if (!editingItem || !user?.id) return;
+
+    const variantIds = Object.values(selectedVariants).map((v: any) => v.id);
+
+    if (variantIds.length === 0) {
+      toast.error('Please select at least one variant');
+      return;
+    }
+
+    setUpdating(editingItem.id);
+    const { error } = await updateVariantsAsync(editingItem.id, variantIds);
+
+    if (error) {
+      toast.error('Failed to update variants');
+    } else {
+      toast.success('Variants updated');
+      setEditingItem(null);
+      setSelectedVariants({});
+      setAvailableVariants([]);
+    }
+
+    setUpdating(null);
+  }, [editingItem, selectedVariants, updateVariantsAsync, user?.id]);
+
+  const closeEditModal = useCallback(() => {
+    setEditingItem(null);
+    setSelectedVariants({});
+    setAvailableVariants([]);
+  }, []);
+
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const product = item.product;
     const primaryImage = product?.images?.find((img: any) => img.is_primary) || product?.images?.[0];
 
     // Calculate price with promotions
     const priceInfo = product ? getProductFinalPrice(product, activePromotions) : { finalPrice: 0, originalPrice: 0, hasDiscount: false, hasPromotion: false };
-    const price = priceInfo.finalPrice;
+    // Add all variant price adjustments
+    const variantAdjustment = (item.product_variants || []).reduce((sum: number, v: any) => sum + (v.price_adjustment || 0), 0);
+    const price = priceInfo.finalPrice + variantAdjustment;
     const originalPrice = priceInfo.originalPrice;
     const hasDiscount = priceInfo.hasDiscount || priceInfo.hasPromotion;
     const isUpdating = updating === item.id;
@@ -159,6 +247,35 @@ const CartScreen = () => {
           <Text style={styles.productName} numberOfLines={2}>
             {product?.name || 'Product'}
           </Text>
+
+          {/* Variant Info */}
+          {item.product_variants && item.product_variants.length > 0 && (
+            <View style={styles.variantContainer}>
+              <View style={styles.variantInfo}>
+                {item.product_variants.map((variant: any, index: number) => (
+                  <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', marginRight: SPACING.sm }}>
+                    <Text style={styles.variantText}>
+                      {variant.type.charAt(0).toUpperCase() + variant.type.slice(1)}: {variant.value}
+                    </Text>
+                    {variant.price_adjustment !== 0 && (
+                      <Text style={styles.variantPrice}>
+                        {' '}({variant.price_adjustment > 0 ? '+' : ''}
+                        {formatCurrency(variant.price_adjustment)})
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={styles.editVariantButton}
+                onPress={() => openEditVariants(item)}
+                disabled={isUpdating}
+              >
+                <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.editVariantText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Price Section */}
           <View style={styles.priceRow}>
@@ -235,39 +352,32 @@ const CartScreen = () => {
     );
   };
 
-  const renderEmptyCart = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="cart-outline" size={80} color={COLORS.textSecondary} />
-      <Text style={styles.emptyTitle}>Your cart is empty</Text>
-      <Text style={styles.emptySubtitle}>
-        Add some items to get started
-      </Text>
-      <TouchableOpacity
-        style={styles.shopButton}
-        onPress={() => {
-          // Navigate back first, then jump to Catalog tab
-          navigation.goBack();
-          // Use a timeout to ensure the back navigation completes first
-          setTimeout(() => {
-            (navigation as any).getParent()?.navigate('Catalog');
-          }, 100);
-        }}
-        accessibilityLabel="Start shopping"
-        accessibilityHint="Double tap to go to catalog and browse products"
-        accessibilityRole="button"
-      >
-        <Text style={styles.shopButtonText}>Start Shopping</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const handleStartShopping = () => {
+    // Navigate back first, then jump to Catalog tab
+    navigation.goBack();
+    // Use a timeout to ensure the back navigation completes first
+    setTimeout(() => {
+      (navigation as any).getParent()?.navigate('Catalog');
+    }, 100);
+  };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading cart...</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            accessibilityLabel={A11Y_LABELS.BACK_BUTTON}
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Cart</Text>
+          <View style={styles.headerRight} />
         </View>
+        <ListSkeleton type="product" count={3} />
       </SafeAreaView>
     );
   }
@@ -289,7 +399,10 @@ const CartScreen = () => {
           <Text style={styles.headerTitle}>Cart</Text>
           <View style={styles.headerRight} />
         </View>
-        {renderEmptyCart()}
+        <EmptyCart
+          actionLabel="Start Shopping"
+          onAction={handleStartShopping}
+        />
       </SafeAreaView>
     );
   }
@@ -361,6 +474,118 @@ const CartScreen = () => {
           <Ionicons name="arrow-forward" size={22} color={COLORS.white} />
         </TouchableOpacity>
       </View>
+
+      {/* Edit Variants Modal */}
+      <Modal
+        visible={editingItem !== null}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={closeEditModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Variants</Text>
+              <TouchableOpacity onPress={closeEditModal} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingVariants ? (
+              <View style={styles.modalLoadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.modalLoadingText}>Loading variants...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                {editingItem?.product && (
+                  <View style={styles.modalProductInfo}>
+                    <Text style={styles.modalProductName}>{editingItem.product.name}</Text>
+                  </View>
+                )}
+
+                {/* Group variants by type */}
+                {Object.entries(
+                  availableVariants.reduce((acc: any, variant: any) => {
+                    if (!acc[variant.type]) acc[variant.type] = [];
+                    acc[variant.type].push(variant);
+                    return acc;
+                  }, {})
+                ).map(([type, variants]: [string, any]) => (
+                  <View key={type} style={styles.variantTypeGroup}>
+                    <Text style={styles.variantTypeLabel}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </Text>
+                    <View style={styles.variantOptionsGrid}>
+                      {variants.map((variant: any) => {
+                        const isSelected = selectedVariants[type]?.id === variant.id;
+                        return (
+                          <TouchableOpacity
+                            key={variant.id}
+                            style={[
+                              styles.variantOption,
+                              isSelected && styles.variantOptionSelected,
+                            ]}
+                            onPress={() => handleSelectVariant(variant)}
+                          >
+                            <Text
+                              style={[
+                                styles.variantOptionText,
+                                isSelected && styles.variantOptionTextSelected,
+                              ]}
+                            >
+                              {variant.value}
+                            </Text>
+                            {variant.price_adjustment !== 0 && (
+                              <Text
+                                style={[
+                                  styles.variantOptionPrice,
+                                  isSelected && styles.variantOptionPriceSelected,
+                                ]}
+                              >
+                                {variant.price_adjustment > 0 ? '+' : ''}
+                                {formatCurrency(variant.price_adjustment)}
+                              </Text>
+                            )}
+                            {isSelected && (
+                              <View style={styles.variantSelectedIcon}>
+                                <Ionicons name="checkmark" size={16} color={COLORS.white} />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={closeEditModal}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveButton,
+                  updating === editingItem?.id && styles.modalSaveButtonDisabled,
+                ]}
+                onPress={handleSaveVariants}
+                disabled={updating === editingItem?.id}
+              >
+                {updating === editingItem?.id ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.modalSaveButtonText}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -472,6 +697,44 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
     lineHeight: 20,
     flexWrap: 'wrap',
+  },
+  variantContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+    gap: SPACING.xs,
+  },
+  variantInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+  },
+  variantText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  variantPrice: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  editVariantButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    backgroundColor: `${COLORS.primary}10`,
+    borderRadius: BORDER_RADIUS.sm,
+    gap: 4,
+  },
+  editVariantText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   priceRow: {
     flexDirection: 'row',
@@ -638,6 +901,155 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    maxHeight: '80%',
+    paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text,
+    fontWeight: 'bold',
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalLoadingContainer: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  modalLoadingText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+  },
+  modalContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  modalProductInfo: {
+    marginBottom: SPACING.lg,
+  },
+  modalProductName: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  variantTypeGroup: {
+    marginBottom: SPACING.lg,
+  },
+  variantTypeLabel: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: SPACING.sm,
+  },
+  variantOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  variantOption: {
+    minWidth: 80,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  variantOptionSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  variantOptionText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  variantOptionTextSelected: {
+    color: COLORS.white,
+  },
+  variantOptionPrice: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginTop: 2,
+  },
+  variantOptionPriceSelected: {
+    color: COLORS.white,
+  },
+  variantSelectedIcon: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+  },
+  modalCancelButtonText: {
+    ...TYPOGRAPHY.button,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalSaveButtonText: {
+    ...TYPOGRAPHY.button,
+    color: COLORS.white,
+    fontWeight: 'bold',
   },
 });
 

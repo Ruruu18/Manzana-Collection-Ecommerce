@@ -33,7 +33,8 @@ export const useProduct = (productId: string | undefined) => {
         .select(`
           *,
           category:categories(id, name),
-          product_images(id, url, alt_text, is_primary, sort_order)
+          product_images(id, url, alt_text, is_primary, sort_order),
+          product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('id', productId)
         .single();
@@ -49,7 +50,11 @@ export const useProduct = (productId: string | undefined) => {
         });
       }
 
-      return { ...data, images: data.product_images || [] } as Product;
+      return {
+        ...data,
+        images: data.product_images || [],
+        variants: data.product_variants || []
+      } as Product;
     },
     enabled: !!productId,
     staleTime: 0, // Always fetch fresh data
@@ -69,7 +74,8 @@ export const useFeaturedProducts = () => {
         .select(`
           *,
           category:categories(id, name),
-          images:product_images(id, url, alt_text, is_primary)
+          images:product_images(id, url, alt_text, is_primary),
+          variants:product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('is_active', true)
         .eq('is_featured', true)
@@ -98,7 +104,8 @@ export const useNewProducts = () => {
         .select(`
           *,
           category:categories(id, name),
-          images:product_images(id, url, alt_text, is_primary)
+          images:product_images(id, url, alt_text, is_primary),
+          variants:product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('is_active', true)
         .gt('stock_quantity', 0)
@@ -128,7 +135,8 @@ export const useSimilarProducts = (productId: string | undefined, categoryId: st
         .select(`
           *,
           category:categories(id, name),
-          product_images(id, url, alt_text, is_primary, sort_order)
+          product_images(id, url, alt_text, is_primary, sort_order),
+          product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('category_id', categoryId)
         .eq('is_active', true)
@@ -144,7 +152,11 @@ export const useSimilarProducts = (productId: string | undefined, categoryId: st
           return a.sort_order - b.sort_order;
         }) || [];
 
-        return { ...p, images: sortedImages };
+        return {
+          ...p,
+          images: sortedImages,
+          variants: p.product_variants || []
+        };
       }) || [];
 
       return processedProducts as Product[];
@@ -169,7 +181,8 @@ export const useProductsByCategory = (categoryId: string | undefined) => {
         .select(`
           *,
           category:categories(id, name),
-          images:product_images(id, url, alt_text, is_primary)
+          images:product_images(id, url, alt_text, is_primary),
+          variants:product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('category_id', categoryId)
         .eq('is_active', true)

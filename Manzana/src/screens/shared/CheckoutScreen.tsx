@@ -88,8 +88,10 @@ const CheckoutScreen = () => {
       data.forEach((item) => {
         if (!item.product) return;
         const { finalPrice, originalPrice } = getProductFinalPrice(item.product, promotions);
-        finalTotal += finalPrice * item.quantity;
-        originalSum += originalPrice * item.quantity;
+        // Add all variant price adjustments
+        const variantAdjustment = (item.product_variants || []).reduce((sum: number, v: any) => sum + (v.price_adjustment || 0), 0);
+        finalTotal += (finalPrice + variantAdjustment) * item.quantity;
+        originalSum += (originalPrice + variantAdjustment) * item.quantity;
       });
 
       setCartTotal(finalTotal);

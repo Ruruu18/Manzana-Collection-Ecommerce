@@ -1,0 +1,123 @@
+/* Error Boundary Styles */
+.error-boundary-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background);
+  padding: 40px 20px;
+}
+
+.error-boundary-content {
+  max-width: 600px;
+  text-align: center;
+}
+
+.error-boundary-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  line-height: 1;
+}
+
+.error-boundary-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 16px 0;
+}
+
+.error-boundary-message {
+  font-size: 16px;
+  color: var(--muted);
+  margin: 0 0 32px 0;
+  line-height: 1.6;
+}
+
+.error-boundary-details {
+  background-color: var(--surface);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 32px;
+  text-align: left;
+  border-left: 4px solid var(--error);
+}
+
+.error-boundary-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+  user-select: none;
+}
+
+.error-boundary-details summary:hover {
+  color: var(--primary);
+}
+
+.error-boundary-details summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.error-boundary-stack {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.error-boundary-stack pre {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.error-boundary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  margin-bottom: 16px;
+}
+
+.error-boundary-button span {
+  font-size: 18px;
+}
+
+.error-boundary-support {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .error-boundary-container {
+    padding: 20px;
+  }
+
+  .error-boundary-icon {
+    font-size: 60px;
+  }
+
+  .error-boundary-title {
+    font-size: 24px;
+  }
+
+  .error-boundary-message {
+    font-size: 14px;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .error-boundary-button {
+    transition: none;
+  }
+}
+
+.error-boundary-button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}

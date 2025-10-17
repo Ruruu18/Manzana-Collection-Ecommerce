@@ -88,7 +88,7 @@ export const orderService = {
           const price = 0;
           return {
             product_id: item.product_id,
-            product_variant_id: item.product_variant_id,
+            variant_ids: item.variant_ids || [],
             quantity: item.quantity,
             unit_price: price,
             total_price: 0,
@@ -105,7 +105,7 @@ export const orderService = {
 
         return {
           product_id: item.product_id,
-          product_variant_id: item.product_variant_id,
+          variant_ids: item.variant_ids || [],
           quantity: item.quantity,
           unit_price: finalPrice, // Save the final price (with promotion)
           total_price: itemTotal,

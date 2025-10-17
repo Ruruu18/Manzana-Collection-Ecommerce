@@ -22,10 +22,11 @@ import { useCartStore } from '../../store/cartStore';
 import { useProduct, useSimilarProducts } from '../../hooks/useProductQueries';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import { formatCurrency, calculateDiscountPercentage, toast, getCategoryIcon } from '../../utils';
-import { ProductDetailsScreenProps, Product, HomeStackParamList } from '../../types';
+import { ProductDetailsScreenProps, Product, HomeStackParamList, ProductVariant } from '../../types';
 import { cartService } from '../../services/cart';
 import { supabase } from '../../services/supabase';
 import ProductReviewsSection from '../../components/ProductReviewsSection';
+import { VariantSelector } from '../../components/VariantSelector';
 
 const { width } = Dimensions.get('window');
 
@@ -42,8 +43,9 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
   // Force refetch product data when productId changes
   useEffect(() => {
     refetch();
-    // Reset selected image when productId changes
+    // Reset selected image and variants when productId changes
     setSelectedImage(0);
+    setSelectedVariants({});
   }, [productId, refetch]);
 
   const [addingToCart, setAddingToCart] = useState(false);
@@ -56,9 +58,24 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
   const [checkingAlert, setCheckingAlert] = useState(false);
   const [settingAlert, setSettingAlert] = useState(false);
   const [imageViewVisible, setImageViewVisible] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<{ [key: string]: ProductVariant }>({});
 
   // Use Zustand store for cart
   const { cartCount, addToCartAsync } = useCartStore();
+
+  // Memoize images array for ImageView component (must be before any returns)
+  const imageViewImages = useMemo(() => {
+    if (!product?.images) return [];
+    return product.images.map(img => ({ uri: img.url }));
+  }, [product?.images]);
+
+  // Handle variant selection (must be before any returns)
+  const handleSelectVariant = useCallback((variant: ProductVariant) => {
+    setSelectedVariants(prev => ({
+      ...prev,
+      [variant.type]: variant
+    }));
+  }, []);
 
   // Show error toast if product fails to load
   useEffect(() => {
@@ -112,12 +129,6 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
     }, [checkStockAlert])
   );
 
-  // Memoize images array for ImageView component
-  const imageViewImages = useMemo(() => {
-    if (!product?.images) return [];
-    return product.images.map(img => ({ uri: img.url }));
-  }, [product?.images]);
-
   const handleAddToCart = useCallback(() => {
     if (!user) {
       toast.warning('Login Required', 'Please login to add items to cart');
@@ -131,11 +142,29 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
       return;
     }
 
+    // Check if product has variants and if they're all selected
+    if (product.variants && product.variants.length > 0) {
+      const variantTypes = [...new Set(product.variants.map(v => v.type))];
+      const selectedTypes = Object.keys(selectedVariants);
+      const missingTypes = variantTypes.filter(type => !selectedTypes.includes(type));
+
+      if (missingTypes.length > 0) {
+        const missingTypesFormatted = missingTypes
+          .map(t => t.charAt(0).toUpperCase() + t.slice(1))
+          .join(', ');
+        toast.warning(
+          'Select Variants',
+          `Please select ${missingTypesFormatted} before adding to cart`
+        );
+        return;
+      }
+    }
+
     // Show modal to select quantity
     setModalAction('add');
     setQuantity(1);
     setShowQuantityModal(true);
-  }, [user, product]);
+  }, [user, product, selectedVariants]);
 
   const confirmAddToCart = useCallback(async () => {
     if (!user || !product) return;
@@ -149,8 +178,11 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
       setAddingToCart(true);
       setShowQuantityModal(false);
 
+      // Get all selected variant IDs
+      const variantIds = Object.values(selectedVariants).map(v => v.id);
+
       // Use Zustand store with optimistic update
-      const { error } = await addToCartAsync(user.id, product.id, quantity);
+      const { error } = await addToCartAsync(user.id, product.id, quantity, variantIds.length > 0 ? variantIds : undefined);
 
       if (error) {
         toast.error(error);
@@ -172,7 +204,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
     } finally {
       setAddingToCart(false);
     }
-  }, [user, product, quantity, addToCartAsync]);
+  }, [user, product, quantity, selectedVariants, addToCartAsync]);
 
   const increaseQuantity = useCallback(() => {
     if (product && quantity < product.stock_quantity) {
@@ -199,11 +231,29 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
       return;
     }
 
+    // Check if product has variants and if they're all selected
+    if (product.variants && product.variants.length > 0) {
+      const variantTypes = [...new Set(product.variants.map(v => v.type))];
+      const selectedTypes = Object.keys(selectedVariants);
+      const missingTypes = variantTypes.filter(type => !selectedTypes.includes(type));
+
+      if (missingTypes.length > 0) {
+        const missingTypesFormatted = missingTypes
+          .map(t => t.charAt(0).toUpperCase() + t.slice(1))
+          .join(', ');
+        toast.warning(
+          'Select Variants',
+          `Please select ${missingTypesFormatted} before buying`
+        );
+        return;
+      }
+    }
+
     // Show modal to select quantity
     setModalAction('buy');
     setQuantity(1);
     setShowQuantityModal(true);
-  }, [user, product]);
+  }, [user, product, selectedVariants]);
 
   const confirmBuyNow = async () => {
     if (!user || !product) return;
@@ -217,8 +267,11 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
       setAddingToCart(true);
       setShowQuantityModal(false);
 
+      // Get all selected variant IDs
+      const variantIds = Object.values(selectedVariants).map(v => v.id);
+
       // Add to cart first
-      const { error } = await cartService.addToCart(user.id, product.id, quantity);
+      const { error } = await cartService.addToCart(user.id, product.id, quantity, variantIds.length > 0 ? variantIds : undefined);
 
       if (error) {
         toast.error(error);
@@ -316,7 +369,14 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
   const discountPercentage = hasDiscount
     ? calculateDiscountPercentage(product.price, product.discounted_price!)
     : 0;
-  const finalPrice = hasDiscount ? product.discounted_price! : product.price;
+
+  // Calculate price with variant adjustments
+  const variantPriceAdjustment = Object.values(selectedVariants).reduce(
+    (sum, variant) => sum + (variant.price_adjustment || 0),
+    0
+  );
+  const basePrice = hasDiscount ? product.discounted_price! : product.price;
+  const finalPrice = basePrice + variantPriceAdjustment;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -446,6 +506,41 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
               </>
             )}
           </View>
+
+          {/* Product Variants */}
+          {product.variants && product.variants.length > 0 && (
+            <View style={styles.variantsSection}>
+              {/* Color variants */}
+              {product.variants.some(v => v.type === 'color') && (
+                <VariantSelector
+                  variants={product.variants}
+                  selectedVariant={selectedVariants['color'] || null}
+                  onSelectVariant={handleSelectVariant}
+                  type="color"
+                />
+              )}
+
+              {/* Size variants */}
+              {product.variants.some(v => v.type === 'size') && (
+                <VariantSelector
+                  variants={product.variants}
+                  selectedVariant={selectedVariants['size'] || null}
+                  onSelectVariant={handleSelectVariant}
+                  type="size"
+                />
+              )}
+
+              {/* Style variants */}
+              {product.variants.some(v => v.type === 'style') && (
+                <VariantSelector
+                  variants={product.variants}
+                  selectedVariant={selectedVariants['style'] || null}
+                  onSelectVariant={handleSelectVariant}
+                  type="style"
+                />
+              )}
+            </View>
+          )}
 
           {/* Description */}
           {product.description && (
@@ -927,6 +1022,10 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     marginLeft: SPACING.xs,
     fontWeight: '600',
+  },
+  variantsSection: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   section: {
     marginTop: SPACING.lg,

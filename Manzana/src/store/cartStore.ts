@@ -17,8 +17,9 @@ interface CartState {
 
   // Async actions with database sync
   loadCart: (userId: string) => Promise<void>;
-  addToCartAsync: (userId: string, productId: string, quantity: number, variantId?: string) => Promise<{ error?: string }>;
+  addToCartAsync: (userId: string, productId: string, quantity: number, variantIds?: string[]) => Promise<{ error?: string }>;
   updateQuantityAsync: (cartItemId: string, quantity: number) => Promise<{ error?: string }>;
+  updateVariantsAsync: (cartItemId: string, variantIds: string[]) => Promise<{ error?: string }>;
   removeFromCartAsync: (cartItemId: string) => Promise<{ error?: string }>;
   clearCartAsync: (userId: string) => Promise<{ error?: string }>;
 }
@@ -116,9 +117,9 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   // Add to cart with database sync
-  addToCartAsync: async (userId: string, productId: string, quantity: number, variantId?: string) => {
+  addToCartAsync: async (userId: string, productId: string, quantity: number, variantIds?: string[]) => {
     try {
-      const { data, error } = await cartService.addToCart(userId, productId, quantity, variantId);
+      const { data, error } = await cartService.addToCart(userId, productId, quantity, variantIds);
 
       if (error) {
         return { error };
@@ -174,6 +175,29 @@ export const useCartStore = create<CartState>((set, get) => ({
     } catch (error: any) {
       console.error('Update quantity error:', error);
       return { error: error.message || 'Failed to update quantity' };
+    }
+  },
+
+  // Update variants with database sync
+  updateVariantsAsync: async (cartItemId: string, variantIds: string[]) => {
+    try {
+      // Database sync
+      const { error } = await cartService.updateVariants(cartItemId, variantIds);
+
+      if (error) {
+        return { error };
+      }
+
+      // Reload cart to get updated variant data
+      const userId = get().cart.find((i) => i.id === cartItemId)?.user_id;
+      if (userId) {
+        await get().loadCart(userId);
+      }
+
+      return {};
+    } catch (error: any) {
+      console.error('Update variants error:', error);
+      return { error: error.message || 'Failed to update variants' };
     }
   },
 

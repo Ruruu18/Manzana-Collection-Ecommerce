@@ -4,11 +4,12 @@ export interface CartItem {
   id: string;
   user_id: string;
   product_id: string;
-  product_variant_id?: string;
+  variant_ids?: string[]; // Array of variant IDs
   quantity: number;
   created_at: string;
   updated_at: string;
   product?: any;
+  product_variants?: any[]; // Array of variant objects
 }
 
 export const cartService = {
@@ -19,7 +20,7 @@ export const cartService = {
     userId: string,
     productId: string,
     quantity: number = 1,
-    variantId?: string
+    variantIds?: string[]
   ) {
     try {
       // First, check product stock availability
@@ -35,25 +36,23 @@ export const cartService = {
         return { data: null, error: 'Product is out of stock' };
       }
 
-      // Check if item already in cart
-      let query = supabase
+      // Check if item already in cart with same variant combination
+      const { data: cartItems, error: checkError } = await supabase
         .from('cart')
         .select('*')
         .eq('user_id', userId)
         .eq('product_id', productId);
 
-      // Handle variant_id - use .is() for null, .eq() for value
-      if (variantId) {
-        query = query.eq('product_variant_id', variantId);
-      } else {
-        query = query.is('product_variant_id', null);
-      }
-
-      const { data: existing, error: checkError } = await query.single();
-
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
       }
+
+      // Find existing item with same variant combination
+      const sortedVariantIds = variantIds?.sort() || [];
+      const existing = cartItems?.find(item => {
+        const itemVariantIds = (item.variant_ids || []).sort();
+        return JSON.stringify(itemVariantIds) === JSON.stringify(sortedVariantIds);
+      });
 
       if (existing) {
         // Check if new quantity exceeds stock
@@ -91,12 +90,8 @@ export const cartService = {
           user_id: userId,
           product_id: productId,
           quantity,
+          variant_ids: sortedVariantIds,
         };
-
-        // Only add variant_id if it exists
-        if (variantId) {
-          insertData.product_variant_id = variantId;
-        }
 
         const { data, error } = await supabase
           .from('cart')
@@ -118,7 +113,8 @@ export const cartService = {
    */
   async getCart(userId: string) {
     try {
-      const { data, error } = await supabase
+      // First get cart items with products
+      const { data: cartData, error } = await supabase
         .from('cart')
         .select(`
           *,
@@ -142,24 +138,40 @@ export const cartService = {
 
       if (error) throw error;
 
-      // Sort product images to show primary first
-      const cartWithSortedImages = (data || []).map((item: any) => ({
-        ...item,
-        product: item.products
-          ? {
-              ...item.products,
-              images: (item.products.product_images || []).sort(
-                (a: any, b: any) => {
-                  if (a.is_primary && !b.is_primary) return -1;
-                  if (!a.is_primary && b.is_primary) return 1;
-                  return 0;
-                }
-              ),
-            }
-          : null,
-      }));
+      // Manually fetch variants for items that have variant_ids
+      const cartWithVariants = await Promise.all(
+        (cartData || []).map(async (item: any) => {
+          let variants: any[] = [];
 
-      return { data: cartWithSortedImages, error: null };
+          if (item.variant_ids && item.variant_ids.length > 0) {
+            const { data: variantData } = await supabase
+              .from('product_variants')
+              .select('id, name, type, value, price_adjustment, stock_quantity')
+              .in('id', item.variant_ids);
+
+            variants = variantData || [];
+          }
+
+          return {
+            ...item,
+            product_variants: variants,
+            product: item.products
+              ? {
+                  ...item.products,
+                  images: (item.products.product_images || []).sort(
+                    (a: any, b: any) => {
+                      if (a.is_primary && !b.is_primary) return -1;
+                      if (!a.is_primary && b.is_primary) return 1;
+                      return 0;
+                    }
+                  ),
+                }
+              : null,
+          };
+        })
+      );
+
+      return { data: cartWithVariants, error: null };
     } catch (error: any) {
       console.error('❌ Get cart error:', error);
       return { data: null, error: error.message };
@@ -270,6 +282,31 @@ export const cartService = {
     } catch (error: any) {
       console.error('❌ Get cart count error:', error);
       return { count: 0, error: error.message };
+    }
+  },
+
+  /**
+   * Update cart item variants
+   */
+  async updateVariants(cartItemId: string, variantIds: string[]) {
+    try {
+      const sortedVariantIds = variantIds.sort();
+
+      const { data, error } = await supabase
+        .from('cart')
+        .update({
+          variant_ids: sortedVariantIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', cartItemId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error: any) {
+      console.error('❌ Update variants error:', error);
+      return { data: null, error: error.message };
     }
   },
 };

@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { uploadImage, validateImageFile, STORAGE_BUCKETS } from "../../utils/imageUpload";
+import VariantManager from "../../components/VariantManager";
 import "../../styles/dashboard-enhancement.css";
 
 interface ProductImage {
@@ -12,6 +13,18 @@ interface ProductImage {
   alt_text: string;
   is_primary: boolean;
   sort_order: number;
+}
+
+interface ProductVariant {
+  id: string;
+  product_id: string;
+  name: string;
+  type: "size" | "color" | "style";
+  value: string;
+  stock_quantity: number;
+  price_adjustment: number;
+  sku_suffix: string;
+  is_active: boolean;
 }
 
 interface Category {
@@ -36,6 +49,7 @@ interface Product {
   created_at?: string;
   updated_at?: string;
   images?: ProductImage[];
+  variants?: ProductVariant[];
   category?: Category;
 }
 
@@ -122,7 +136,8 @@ export default function Products() {
           category_id, stock_quantity, is_active,
           is_featured, tags, brand, created_at, updated_at,
           categories (id, name, description),
-          product_images (id, url, alt_text, is_primary, sort_order)
+          product_images (id, url, alt_text, is_primary, sort_order),
+          product_variants (id, product_id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .order("created_at", { ascending: false });
 
@@ -149,7 +164,8 @@ export default function Products() {
           created_at: product.created_at,
           updated_at: product.updated_at,
           category: product.categories,
-          images: product.product_images || []
+          images: product.product_images || [],
+          variants: product.product_variants || []
         }));
         setItems(mappedProducts);
         setError(null);
@@ -223,6 +239,59 @@ export default function Products() {
     setTags(product.tags?.join(", ") || "");
     setImageFile(null);
     setIsModalOpen(true);
+  }
+
+  // Function to refresh only the editing product's variants
+  async function refreshEditingProductVariants() {
+    if (!editingProduct) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(`
+          id, name, price, discounted_price, sku,
+          category_id, stock_quantity, is_active,
+          is_featured, tags, brand, created_at, updated_at,
+          categories (id, name, description),
+          product_images (id, url, alt_text, is_primary, sort_order),
+          product_variants (id, product_id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
+        `)
+        .eq("id", editingProduct.id)
+        .single();
+
+      if (error) throw error;
+
+      const updatedProduct: Product = {
+        id: data.id,
+        name: data.name,
+        price: data.price,
+        discounted_price: data.discounted_price,
+        sku: data.sku,
+        category_id: data.category_id,
+        stock_quantity: data.stock_quantity,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
+        tags: data.tags,
+        brand: data.brand,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        category: data.categories,
+        images: data.product_images || [],
+        variants: data.product_variants || []
+      };
+
+      // Update editingProduct state
+      setEditingProduct(updatedProduct);
+
+      // Also update in items array
+      setItems(prevItems =>
+        prevItems.map(item =>
+          item.id === updatedProduct.id ? updatedProduct : item
+        )
+      );
+    } catch (err) {
+      console.error("Error refreshing product variants:", err);
+    }
   }
 
   async function onUpdate(e: FormEvent) {
@@ -771,6 +840,17 @@ export default function Products() {
                     </div>
                   )}
                 </div>
+
+                {/* Product Variants (Only for editing existing products) */}
+                {editingProduct && (
+                  <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "20px" }}>
+                    <VariantManager
+                      productId={editingProduct.id}
+                      variants={editingProduct.variants || []}
+                      onUpdate={refreshEditingProductVariants}
+                    />
+                  </div>
+                )}
 
                 {error && (
                   <div
