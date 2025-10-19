@@ -70,6 +70,10 @@ function HomeNavigator() {
         component={CategoryProductsScreen as any}
       />
       <HomeStack.Screen name="Categories" component={CategoriesScreen as any} />
+      <HomeStack.Screen
+        name="PromotionDetails"
+        component={PromotionDetailsScreen as any}
+      />
       <HomeStack.Screen name="Cart" component={CartScreen as any} />
       <HomeStack.Screen name="Checkout" component={CheckoutScreen as any} />
       <HomeStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen as any} />

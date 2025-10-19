@@ -19,7 +19,7 @@ interface StaffMember {
 
 export default function StaffManagement() {
   const navigate = useNavigate();
-  const { isAdmin, userProfile } = useAuth();
+  const { isAdmin } = useAuth();
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

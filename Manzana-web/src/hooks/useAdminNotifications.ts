@@ -38,7 +38,7 @@ export function useAdminNotifications() {
       }
 
       setNotifications(data || []);
-      setUnreadCount(data?.filter(n => !n.read).length || 0);
+      setUnreadCount(data?.filter((n: AdminNotification) => !n.read).length || 0);
     } catch (err) {
       console.error('Error loading notifications:', err);
       setError(err instanceof Error ? err.message : 'Failed to load notifications');
@@ -121,7 +121,7 @@ export function useAdminNotifications() {
           schema: 'public',
           table: 'admin_notifications'
         },
-        (payload) => {
+        (payload: any) => {
           console.log('New notification received:', payload);
           const newNotification = payload.new as AdminNotification;
 

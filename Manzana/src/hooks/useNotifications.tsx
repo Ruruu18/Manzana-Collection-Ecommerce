@@ -322,28 +322,93 @@ export const useNotifications = (): UseNotificationsReturn => {
   };
 
   const deleteNotification = async (notificationId: string): Promise<void> => {
+    if (!user?.id) {
+      console.error('❌ Cannot delete notification: User not authenticated');
+      throw new Error('User not authenticated');
+    }
+
     try {
-      const { error } = await supabase
+      console.log('🗑️ Attempting to delete notification:', notificationId);
+      console.log('👤 User ID:', user.id);
+
+      // Check if user session is valid
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('❌ Session error:', sessionError);
+        throw new Error('Your session has expired. Please log in again.');
+      }
+      console.log('✅ Session is valid');
+
+      // Find notification before deleting to verify ownership
+      const notificationToDelete = notifications.find((n) => n.id === notificationId);
+      if (!notificationToDelete) {
+        console.error('❌ Notification not found in local state:', notificationId);
+        throw new Error('Notification not found');
+      }
+
+      if (notificationToDelete.user_id !== user.id) {
+        console.error('❌ User does not own this notification');
+        throw new Error('Cannot delete notification that does not belong to you');
+      }
+
+      console.log('📝 Notification to delete:', {
+        id: notificationToDelete.id,
+        user_id: notificationToDelete.user_id,
+        is_read: notificationToDelete.is_read,
+      });
+
+      // Perform the delete operation
+      const { data, error, status, statusText } = await supabase
         .from("notifications")
         .delete()
-        .eq("id", notificationId);
+        .eq("id", notificationId)
+        .eq("user_id", user.id)
+        .select(); // Return deleted rows to confirm deletion
+
+      console.log('📡 Delete response:', { status, statusText, data, error });
 
       if (error) {
-        throw error;
+        console.error('❌ Supabase delete error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        throw new Error(`Failed to delete: ${error.message}`);
       }
 
-      // Update local state
-      const notification = notifications.find((n) => n.id === notificationId);
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      if (!data || data.length === 0) {
+        console.error('❌ No rows deleted - notification may not exist or RLS prevented deletion');
+        throw new Error('Failed to delete notification. It may have already been deleted.');
+      }
+
+      console.log('✅ Notification deleted from database successfully');
+
+      // Update local state - remove from UI
+      setNotifications((prev) => {
+        const newNotifications = prev.filter((n) => n.id !== notificationId);
+        console.log(`📊 Updated notifications count: ${prev.length} -> ${newNotifications.length}`);
+        return newNotifications;
+      });
 
       // Update unread count if the deleted notification was unread
-      if (notification && !notification.is_read) {
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-        const newUnreadCount = Math.max(0, unreadCount - 1);
-        await ExpoNotifications.setBadgeCountAsync(newUnreadCount);
+      if (!notificationToDelete.is_read) {
+        setUnreadCount((prev) => {
+          const newCount = Math.max(0, prev - 1);
+          console.log(`📊 Updated unread count: ${prev} -> ${newCount}`);
+          ExpoNotifications.setBadgeCountAsync(newCount);
+          return newCount;
+        });
       }
-    } catch (error) {
 
+      console.log('🎉 Notification deletion complete!');
+    } catch (error: any) {
+      console.error('💥 Failed to delete notification:', {
+        error: error.message || error,
+        notificationId,
+        userId: user?.id,
+      });
+      throw error;
     }
   };
 

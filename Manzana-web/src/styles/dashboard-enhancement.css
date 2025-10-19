@@ -1,13 +1,21 @@
 /* Enhanced Dashboard Styles - Modern UI */
 
+/* Dashboard Grid Override - Make metric cards responsive */
+.dashboard .grid.cols-5,
+.dashboard .grid.cols-4 {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+    gap: 20px !important;
+}
+
 /* Enhanced Dashboard Header */
 .dashboard-header {
     background: linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%) !important;
     border: none !important;
     box-shadow: 0 4px 20px rgba(236, 72, 153, 0.1) !important;
-    padding: 2rem !important;
+    padding: 1.5rem !important;
     border-radius: 20px !important;
-    margin-bottom: 2rem !important;
+    margin-bottom: 1.25rem !important;
 }
 
 .dashboard-title {
@@ -26,16 +34,19 @@
     margin: 8px 0 0 0 !important;
 }
 
-/* Enhanced Metric Cards */
+/* Enhanced Metric Cards - Professional Design */
 .metric-card {
     background: #ffffff !important;
     border: 1px solid #f3f4f6 !important;
-    border-radius: 20px !important;
-    padding: 28px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border-radius: 16px !important;
+    padding: 24px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+    transition: all 0.3s ease !important;
     position: relative !important;
-    overflow: visible !important;
+    overflow: hidden !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
 .metric-card::before {
@@ -44,9 +55,9 @@
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    height: 5px !important;
+    height: 4px !important;
     background: linear-gradient(90deg, #ec4899 0%, #db2777 100%) !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: 16px 16px 0 0 !important;
 }
 
 .metric-card.success::before {
@@ -70,43 +81,58 @@
 }
 
 .metric-card:hover {
-    transform: translateY(-8px) !important;
-    box-shadow: 0 20px 40px rgba(236, 72, 153, 0.2) !important;
-    border-color: #ec4899 !important;
+    transform: translateY(-4px) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+    border-color: #e5e7eb !important;
 }
 
-.metric-value {
-    font-size: 42px !important;
-    font-weight: 900 !important;
-    color: #1f2937 !important;
-    margin: 16px 0 !important;
-    line-height: 1 !important;
-    letter-spacing: -1px !important;
+.metric-header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
 }
 
 .metric-icon {
     font-size: 24px !important;
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+    line-height: 1 !important;
+    flex-shrink: 0 !important;
 }
 
 .metric-title {
-    font-size: 14px !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
     color: #6b7280 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.5px !important;
+    margin: 0 !important;
+    line-height: 1.3 !important;
+    flex: 1 !important;
+}
+
+.metric-value {
+    font-size: 36px !important;
+    font-weight: 800 !important;
+    color: #111827 !important;
+    margin: 0 0 12px 0 !important;
+    line-height: 1 !important;
+    letter-spacing: -1px !important;
+    word-break: break-all !important;
 }
 
 .metric-change {
-    font-size: 13px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
-    margin-top: 12px !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    line-height: 1.4 !important;
+}
+
+.metric-change span {
+    font-size: 14px !important;
+    line-height: 1 !important;
 }
 
 .metric-change.positive {
@@ -122,7 +148,7 @@
     background: #ffffff !important;
     border: 1px solid #f3f4f6 !important;
     border-radius: 20px !important;
-    padding: 32px !important;
+    padding: 24px !important;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
     transition: all 0.3s ease !important;
 }
@@ -134,10 +160,10 @@
 }
 
 .card h3 {
-    font-size: 20px !important;
+    font-size: 18px !important;
     font-weight: 700 !important;
     color: #1f2937 !important;
-    margin: 0 0 20px 0 !important;
+    margin: 0 0 16px 0 !important;
 }
 
 /* Enhanced Tables */
@@ -154,11 +180,11 @@
     font-size: 12px !important;
     text-transform: uppercase !important;
     letter-spacing: 1px !important;
-    padding: 16px 24px !important;
+    padding: 12px 20px !important;
 }
 
 .table td {
-    padding: 16px 24px !important;
+    padding: 12px 20px !important;
     border-bottom: 1px solid #f3f4f6 !important;
     color: #374151 !important;
 }
@@ -209,17 +235,17 @@
 
 /* Enhanced Chart */
 .chart-container {
-    margin-top: 24px !important;
-    min-height: 300px !important;
+    margin-top: 16px !important;
+    min-height: 280px !important;
 }
 
 .bars {
-    padding: 32px 24px 24px 24px !important;
-    gap: 12px !important;
+    padding: 24px 20px 20px 20px !important;
+    gap: 10px !important;
     display: flex !important;
     align-items: flex-end !important;
     justify-content: space-between !important;
-    min-height: 250px !important;
+    min-height: 220px !important;
 }
 
 .bar {
@@ -277,8 +303,8 @@
 }
 
 /* Enhanced Grid Spacing */
-.grid {
-    gap: 24px !important;
+.dashboard .grid {
+    gap: 20px !important;
 }
 
 /* Loading State */

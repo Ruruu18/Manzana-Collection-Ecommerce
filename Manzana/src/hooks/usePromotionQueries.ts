@@ -25,7 +25,10 @@ export const useFeaturedPromotions = (userType?: string) => {
     queryKey: promotionKeys.featured(userType),
     queryFn: async () => {
       const now = new Date().toISOString();
-      const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      // Increased from 7 to 30 days to show more upcoming promotions
+      const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      console.log('📅 Fetching promotions:', { now, thirtyDaysFromNow, userType });
 
       // Fetch active promotions
       let activeQuery = supabase
@@ -35,13 +38,13 @@ export const useFeaturedPromotions = (userType?: string) => {
         .lte('start_date', now)
         .gte('end_date', now);
 
-      // Fetch upcoming promotions
+      // Fetch upcoming promotions (within 30 days)
       let upcomingQuery = supabase
         .from('promotions')
         .select('*')
         .eq('is_active', true)
         .gt('start_date', now)
-        .lte('start_date', sevenDaysFromNow);
+        .lte('start_date', thirtyDaysFromNow);
 
       // Filter by user type if provided
       if (userType) {
@@ -58,8 +61,17 @@ export const useFeaturedPromotions = (userType?: string) => {
         upcomingQuery,
       ]);
 
-      if (activeResult.error) throw activeResult.error;
-      if (upcomingResult.error) throw upcomingResult.error;
+      if (activeResult.error) {
+        console.error('Error fetching active promotions:', activeResult.error);
+        throw activeResult.error;
+      }
+      if (upcomingResult.error) {
+        console.error('Error fetching upcoming promotions:', upcomingResult.error);
+        throw upcomingResult.error;
+      }
+
+      console.log('📊 Active promotions:', activeResult.data?.length || 0);
+      console.log('📊 Upcoming promotions:', upcomingResult.data?.length || 0);
 
       // Combine and sort
       const activePromotions = (activeResult.data || []).map((p: Promotion) => ({
@@ -70,7 +82,10 @@ export const useFeaturedPromotions = (userType?: string) => {
         .map((p: Promotion) => ({ ...p, isActive: false }))
         .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
 
-      return [...activePromotions, ...upcomingPromotions].slice(0, 5);
+      const allPromotions = [...activePromotions, ...upcomingPromotions].slice(0, 10);
+      console.log('✅ Total promotions to display:', allPromotions.length);
+
+      return allPromotions;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

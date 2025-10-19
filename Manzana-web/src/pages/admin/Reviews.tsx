@@ -41,7 +41,7 @@ interface ReviewStats {
 
 export default function Reviews() {
   const navigate = useNavigate();
-  const { isAdmin, userProfile } = useAuth();
+  const { isAdmin } = useAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,22 +178,22 @@ export default function Reviews() {
 
       const totalReviews = allReviews?.length || 0;
       const averageRating = totalReviews > 0
-        ? allReviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews
+        ? allReviews.reduce((sum: number, r: any) => sum + r.rating, 0) / totalReviews
         : 0;
 
       const ratingDistribution = {
-        5: allReviews?.filter(r => r.rating === 5).length || 0,
-        4: allReviews?.filter(r => r.rating === 4).length || 0,
-        3: allReviews?.filter(r => r.rating === 3).length || 0,
-        2: allReviews?.filter(r => r.rating === 2).length || 0,
-        1: allReviews?.filter(r => r.rating === 1).length || 0,
+        5: allReviews?.filter((r: any) => r.rating === 5).length || 0,
+        4: allReviews?.filter((r: any) => r.rating === 4).length || 0,
+        3: allReviews?.filter((r: any) => r.rating === 3).length || 0,
+        2: allReviews?.filter((r: any) => r.rating === 2).length || 0,
+        1: allReviews?.filter((r: any) => r.rating === 1).length || 0,
       };
 
       // Reviews in last 7 days
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const recentReviews = allReviews?.filter(
-        r => new Date(r.created_at) > sevenDaysAgo
+        (r: any) => new Date(r.created_at) > sevenDaysAgo
       ).length || 0;
 
       setStats({

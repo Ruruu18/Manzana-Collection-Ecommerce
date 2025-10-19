@@ -19,6 +19,7 @@ import { useProductImagesPreloader } from "../../../hooks/useImagePreloader";
 import { useCartStore } from "../../../store/cartStore";
 import { useFeaturedProducts, useNewProducts } from "../../../hooks/useProductQueries";
 import { useFeaturedPromotions, useCategories } from "../../../hooks/usePromotionQueries";
+import { useProductsWithPromotions } from "../../../hooks/useProductsWithPromotions";
 import { Product, Category, Promotion, HomeScreenProps } from "../../../types";
 import {
   COLORS,
@@ -60,19 +61,30 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   } = useCategories();
 
   const {
-    data: featuredProducts = [],
+    data: rawFeaturedProducts = [],
     isLoading: featuredLoading,
     refetch: refetchFeatured,
   } = useFeaturedProducts();
 
   const {
-    data: newProducts = [],
+    data: rawNewProducts = [],
     isLoading: newProductsLoading,
     refetch: refetchNew,
   } = useNewProducts();
 
+  // Apply active promotions to products
+  const { products: featuredProducts, isLoading: featuredPromosLoading } = useProductsWithPromotions(
+    rawFeaturedProducts,
+    user?.user_type
+  );
+
+  const { products: newProducts, isLoading: newPromosLoading } = useProductsWithPromotions(
+    rawNewProducts,
+    user?.user_type
+  );
+
   // Combined loading state
-  const loading = promotionsLoading || categoriesLoading || featuredLoading || newProductsLoading;
+  const loading = promotionsLoading || categoriesLoading || featuredLoading || newProductsLoading || featuredPromosLoading || newPromosLoading;
   const [refreshing, setRefreshing] = useState(false);
 
   // Preload featured product images
@@ -195,64 +207,85 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       );
     }
 
-    // For active promotions, use the original card design
+    // For active promotions, use cleaner card design
     return (
-      <TouchableOpacity
-        style={styles.promotionCard}
-        onPress={() =>
-          (navigation as any).navigate("PromotionDetails", {
-            promotionId: item.id,
-          })
-        }
-      >
-        {item.image_url ? (
-          <OptimizedImage
-            uri={item.image_url}
-            width={PROMOTION_CARD_WIDTH}
-            height={200}
-            contentFit="cover"
-            style={styles.promotionImage}
-            priority="high"
-          />
-        ) : (
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.secondary]}
-            style={styles.promotionImagePlaceholder}
-          >
-            <Ionicons name="pricetag" size={40} color={COLORS.white} />
-          </LinearGradient>
-        )}
+      <View style={styles.activePromotionContainer}>
+        <TouchableOpacity
+          style={styles.promotionCard}
+          onPress={() =>
+            (navigation as any).navigate("PromotionDetails", {
+              promotionId: item.id,
+            })
+          }
+          activeOpacity={0.9}
+        >
+          {/* Image with overlay */}
+          <View style={styles.promotionImageContainer}>
+            {item.image_url ? (
+              <OptimizedImage
+                uri={item.image_url}
+                width={PROMOTION_CARD_WIDTH}
+                height={160}
+                contentFit="cover"
+                style={styles.promotionImage}
+                priority="high"
+              />
+            ) : (
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.secondary]}
+                style={styles.promotionImagePlaceholder}
+              >
+                <Ionicons name="pricetag" size={40} color={COLORS.white} />
+              </LinearGradient>
+            )}
 
-        <View style={styles.promotionContent}>
-          <View style={styles.promotionBadge}>
-            <Text style={styles.promotionBadgeText}>
-              {item.promotion_type === "percentage"
-                ? `${String(item.discount_value || 0)}% OFF`
-                : item.promotion_type === "fixed_amount"
-                  ? `₱${String(item.discount_value || 0)} OFF`
-                  : item.promotion_type === "free_shipping"
-                    ? "FREE SHIPPING"
-                    : "SPECIAL OFFER"}
-            </Text>
+            {/* Dark overlay for better text readability */}
+            <View style={styles.promotionOverlay} />
+
+            {/* Content on image */}
+            <View style={styles.promotionImageContent}>
+              {/* Top badges */}
+              <View style={styles.topBadgesRow}>
+                <View style={styles.activePromotionBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.activePromotionText}>LIVE NOW</Text>
+                </View>
+              </View>
+
+              {/* Title */}
+              <Text style={styles.promotionTitleOnImage} numberOfLines={2}>
+                {item.title}
+              </Text>
+
+              {/* Bottom row with discount */}
+              <View style={styles.promotionBadge}>
+                <Text style={styles.promotionBadgeText}>
+                  {item.promotion_type === "percentage"
+                    ? `${String(item.discount_value || 0)}% OFF`
+                    : item.promotion_type === "fixed_amount"
+                      ? `₱${String(item.discount_value || 0)} OFF`
+                      : item.promotion_type === "free_shipping"
+                        ? "FREE SHIPPING"
+                        : "SPECIAL OFFER"}
+                </Text>
+              </View>
+            </View>
           </View>
+        </TouchableOpacity>
 
-          <Text style={styles.promotionTitle}>{item.title}</Text>
-          <Text style={styles.promotionDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-
-          <Button
-            title="View Promotion"
-            onPress={() =>
-              (navigation as any).navigate("PromotionDetails", {
-                promotionId: item.id,
-              })
-            }
-            size="small"
-            style={styles.promotionButton}
-          />
-        </View>
-      </TouchableOpacity>
+        {/* View Promotion Button - Outside */}
+        <TouchableOpacity
+          style={styles.activePromotionButton}
+          onPress={() =>
+            (navigation as any).navigate("PromotionDetails", {
+              promotionId: item.id,
+            })
+          }
+        >
+          <Text style={styles.activePromotionButtonText}>View Promotion</Text>
+          <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -495,60 +528,129 @@ const styles = StyleSheet.create({
   promotionsList: {
     paddingHorizontal: SPACING.lg,
   },
+  activePromotionContainer: {
+    width: PROMOTION_CARD_WIDTH,
+    marginRight: SPACING.md,
+    marginVertical: SPACING.md,
+  },
   promotionCard: {
     width: PROMOTION_CARD_WIDTH,
-    backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.lg,
     overflow: "hidden",
-    marginRight: SPACING.md,
     shadowColor: COLORS.black,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+    marginBottom: SPACING.sm,
+  },
+  promotionImageContainer: {
+    width: "100%",
+    height: 160,
+    position: "relative",
   },
   promotionImage: {
     width: "100%",
-    height: 200,
+    height: "100%",
   },
   promotionImagePlaceholder: {
     width: "100%",
-    height: 200,
+    height: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
-  promotionContent: {
+  promotionOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+  },
+  promotionImageContent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     padding: SPACING.md,
+    justifyContent: "space-between",
+  },
+  topBadgesRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   promotionBadge: {
     alignSelf: "flex-start",
     backgroundColor: COLORS.error,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
-    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
   },
   promotionBadgeText: {
+    ...TYPOGRAPHY.h4,
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: 18,
+  },
+  activePromotionBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.success,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.lg,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.white,
+  },
+  activePromotionText: {
     ...TYPOGRAPHY.caption,
     color: COLORS.white,
     fontWeight: "bold",
+    fontSize: 10,
+    textTransform: "uppercase",
   },
-  promotionTitle: {
-    ...TYPOGRAPHY.h4,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
+  promotionTitleOnImage: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.white,
+    fontWeight: "bold",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
   },
-  promotionDescription: {
-    ...TYPOGRAPHY.bodySmall,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-    marginBottom: SPACING.md,
+  activePromotionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.black,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  promotionButton: {
-    alignSelf: "flex-start",
+  activePromotionButtonText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.primary,
+    fontWeight: "600",
+    fontSize: 14,
   },
   section: {
     marginVertical: SPACING.md,

@@ -94,7 +94,7 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     );
   };
 
-  const handleDeleteNotification = (notification: Notification) => {
+  const handleDeleteNotification = async (notification: Notification) => {
     Alert.alert(
       "Delete Notification",
       "Are you sure you want to delete this notification?",
@@ -103,7 +103,22 @@ const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => deleteNotification(notification.id),
+          onPress: async () => {
+            try {
+              console.log('🔄 User confirmed deletion');
+              await deleteNotification(notification.id);
+              console.log('✅ Delete successful - notification removed from UI');
+              // Success - notification should be removed from UI via state update
+            } catch (error: any) {
+              console.error('❌ Delete failed in UI handler:', error);
+              const errorMessage = error?.message || 'Failed to delete notification. Please try again.';
+              Alert.alert(
+                "Deletion Failed",
+                errorMessage,
+                [{ text: "OK" }]
+              );
+            }
+          },
         },
       ],
     );

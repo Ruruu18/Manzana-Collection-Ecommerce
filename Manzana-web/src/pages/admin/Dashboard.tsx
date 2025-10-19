@@ -347,7 +347,7 @@ export default function Dashboard() {
       {/* Key Metrics */}
       <div
         className={`grid ${isAdmin ? 'cols-5' : 'cols-4'}`}
-        style={{ marginBottom: "var(--spacing-lg)" }}
+        style={{ marginBottom: "1.25rem" }}
       >
         <div className="metric-card success">
           <div className="metric-header">
@@ -452,27 +452,27 @@ export default function Dashboard() {
       {/* Charts and Analytics */}
       <div
         className="grid cols-3"
-        style={{ marginBottom: "var(--spacing-lg)" }}
+        style={{ marginBottom: "1.25rem" }}
       >
         <div className="card" style={{ gridColumn: "span 2" }}>
           <h3>Sales Overview (Current Year)</h3>
           <div className="chart-container">
             {monthlySales.every(val => val === 0) ? (
-              <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)" }}>
-                <div style={{ fontSize: "48px", marginBottom: "12px" }}>📊</div>
+              <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
+                <div style={{ fontSize: "40px", marginBottom: "8px" }}>📊</div>
                 <div>No sales data yet for this year</div>
               </div>
             ) : (
               <div style={{
-                padding: '30px 20px',
+                padding: '20px 16px',
                 perspective: '1000px'
               }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'flex-end',
                   justifyContent: 'space-around',
-                  height: '300px',
-                  gap: '8px',
+                  height: '240px',
+                  gap: '6px',
                   transformStyle: 'preserve-3d',
                   transform: 'rotateX(5deg)'
                 }}>
@@ -581,8 +581,8 @@ export default function Dashboard() {
         <div className="card">
           <h3>Order Status</h3>
           {orderStatusData.total === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)" }}>
-              <div style={{ fontSize: "48px", marginBottom: "12px" }}>📊</div>
+            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
+              <div style={{ fontSize: "40px", marginBottom: "8px" }}>📊</div>
               <div>No orders to display</div>
             </div>
           ) : (
@@ -842,8 +842,8 @@ export default function Dashboard() {
               <tbody>
                 {recentOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-                      <div style={{ fontSize: "48px", marginBottom: "12px" }}>📋</div>
+                    <td colSpan={4} style={{ textAlign: "center", padding: "30px", color: "var(--muted)" }}>
+                      <div style={{ fontSize: "40px", marginBottom: "8px" }}>📋</div>
                       <div>No orders yet</div>
                     </td>
                   </tr>
@@ -903,8 +903,8 @@ export default function Dashboard() {
               <tbody>
                 {topProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={3} style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>
-                      <div style={{ fontSize: "48px", marginBottom: "12px" }}>📦</div>
+                    <td colSpan={3} style={{ textAlign: "center", padding: "30px", color: "var(--muted)" }}>
+                      <div style={{ fontSize: "40px", marginBottom: "8px" }}>📦</div>
                       <div>No product sales yet</div>
                     </td>
                   </tr>
@@ -937,9 +937,9 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="card" style={{ marginTop: "var(--spacing-lg)" }}>
+      <div className="card" style={{ marginTop: "1rem" }}>
         <h3>Quick Actions</h3>
-        <div className={`grid ${isAdmin ? 'cols-5' : 'cols-3'}`} style={{ marginTop: "var(--spacing)" }}>
+        <div className={`grid ${isAdmin ? 'cols-5' : 'cols-3'}`} style={{ marginTop: "12px" }}>
           <button
             className="btn btn-secondary"
             onClick={() => navigate('/admin/products')}
@@ -947,8 +947,8 @@ export default function Dashboard() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "var(--spacing-sm)",
-              padding: "var(--spacing-lg)",
+              gap: "8px",
+              padding: "16px",
             }}
           >
             <span style={{ fontSize: "24px" }}>➕</span>
@@ -961,8 +961,8 @@ export default function Dashboard() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "var(--spacing-sm)",
-              padding: "var(--spacing-lg)",
+              gap: "8px",
+              padding: "16px",
             }}
           >
             <span style={{ fontSize: "24px" }}>📋</span>
@@ -975,8 +975,8 @@ export default function Dashboard() {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "var(--spacing-sm)",
-              padding: "var(--spacing-lg)",
+              gap: "8px",
+              padding: "16px",
             }}
           >
             <span style={{ fontSize: "24px" }}>📂</span>
@@ -991,8 +991,8 @@ export default function Dashboard() {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: "var(--spacing-sm)",
-                  padding: "var(--spacing-lg)",
+                  gap: "8px",
+                  padding: "16px",
                 }}
               >
                 <span style={{ fontSize: "24px" }}>👥</span>
@@ -1005,8 +1005,8 @@ export default function Dashboard() {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: "var(--spacing-sm)",
-                  padding: "var(--spacing-lg)",
+                  gap: "8px",
+                  padding: "16px",
                 }}
               >
                 <span style={{ fontSize: "24px" }}>👨‍💼</span>

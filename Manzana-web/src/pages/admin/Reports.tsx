@@ -109,7 +109,7 @@ export default function Reports() {
 
       if (error) throw error;
 
-      const revenue = data?.reduce((sum, order) => sum + parseFloat(order.total_amount || '0'), 0) || 0;
+      const revenue = data?.reduce((sum: number, order: any) => sum + parseFloat(order.total_amount || '0'), 0) || 0;
       const orders = data?.length || 0;
       const avgValue = orders > 0 ? revenue / orders : 0;
 
@@ -282,11 +282,11 @@ export default function Reports() {
         .from('orders')
         .select('total_amount, user_id');
 
-      const totalRevenue = allOrders?.reduce((sum, order) => sum + parseFloat(order.total_amount || '0'), 0) || 0;
+      const totalRevenue = allOrders?.reduce((sum: number, order: any) => sum + parseFloat(order.total_amount || '0'), 0) || 0;
       const totalOrderCount = allOrders?.length || 0;
       const avgOrderValue = totalOrderCount > 0 ? totalRevenue / totalOrderCount : 0;
 
-      const uniqueCustomers = new Set(allOrders?.map(order => order.user_id)).size;
+      const uniqueCustomers = new Set(allOrders?.map((order: any) => order.user_id)).size;
       const clv = uniqueCustomers > 0 ? totalRevenue / uniqueCustomers : 0;
 
       setCustomerMetrics({

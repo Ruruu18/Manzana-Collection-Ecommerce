@@ -250,42 +250,6 @@ export default function UserManagement() {
     }
   };
 
-  const deleteUser = async (user: User) => {
-    // Prevent deleting own account
-    if (user.id === userProfile?.id) {
-      alert('You cannot delete your own account');
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to delete ${user.full_name || user.email}'s account? This will deactivate the account.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ is_active: false })
-        .eq('id', user.id);
-
-      if (error) {
-        console.error('Error deleting user:', error);
-        alert('Failed to delete user');
-        return;
-      }
-
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.id === user.id ? { ...u, is_active: false } : u
-        )
-      );
-
-      alert('User account has been deactivated.');
-    } catch (error) {
-      console.error('Failed to delete user:', error);
-      alert('Failed to delete user');
-    }
-  };
-
   const openCreateModal = () => {
     // Reset form
     setCreateEmail("");
