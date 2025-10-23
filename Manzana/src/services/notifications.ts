@@ -110,31 +110,41 @@ class NotificationService {
    */
   async registerDeviceToken(userId: string): Promise<void> {
     try {
+      console.log('📱 Registering device token for user:', userId);
+
       const token = await this.getExpoPushToken();
       if (!token) {
-        console.warn('No push token available');
+        console.warn('⚠️  No push token available - device may not support push notifications');
         return;
       }
 
+      console.log('💾 Saving device token to database...');
+      console.log('   User ID:', userId);
+      console.log('   Platform:', Platform.OS);
+      console.log('   Token:', token.substring(0, 40) + '...');
+
       // Save token to database
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('user_devices')
         .upsert({
           user_id: userId,
-          device_token: token,
+          push_token: token,
           platform: Platform.OS,
           updated_at: new Date().toISOString(),
         }, {
-          onConflict: 'user_id,device_token',
-        });
+          onConflict: 'user_id,push_token',
+        })
+        .select();
 
       if (error) {
-        console.error('Error saving device token:', error);
+        console.error('❌ Error saving device token:', error);
+        console.error('   Error details:', JSON.stringify(error, null, 2));
       } else {
-        console.log('Device token registered successfully');
+        console.log('✅ Device token registered successfully!');
+        console.log('   Database record:', data);
       }
     } catch (error) {
-      console.error('Error registering device token:', error);
+      console.error('💥 Error registering device token:', error);
     }
   }
 
@@ -149,7 +159,7 @@ class NotificationService {
         .from('user_devices')
         .delete()
         .eq('user_id', userId)
-        .eq('device_token', this.expoPushToken);
+        .eq('push_token', this.expoPushToken);
 
       if (error) {
         console.error('Error unregistering device token:', error);
