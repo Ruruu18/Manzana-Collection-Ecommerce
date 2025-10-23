@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { View, ActivityIndicator, Platform, StatusBar, StyleSheet } from "react-native";
 import { useAuth } from "../hooks/useAuth";
+import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { COLORS } from "../constants/theme";
 import TabNavigator from "./TabNavigator";
 
@@ -48,6 +49,9 @@ function RootNavigator() {
   const [isFirstTime, setIsFirstTime] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [hasCheckedFirstTime, setHasCheckedFirstTime] = useState(false);
+
+  // Initialize notification handler (registers device token when user logs in)
+  useNotificationHandler();
 
   // Development bypass - set to true to skip profile setup
   const DEV_BYPASS_PROFILE_SETUP = true;

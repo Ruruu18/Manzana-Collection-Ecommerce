@@ -316,6 +316,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
           .upsert({
             user_id: user.id,
             product_id: product.id,
+            threshold_quantity: 10, // Notify when stock is restocked above 10
             is_active: true,
             updated_at: new Date().toISOString(),
           }, {
