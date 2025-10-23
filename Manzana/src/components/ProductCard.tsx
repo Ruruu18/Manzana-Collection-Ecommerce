@@ -157,13 +157,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
         setHasStockAlert(false);
         Alert.alert("Alert Removed", "You will no longer receive notifications for this product.");
       } else {
-        // Add alert
+        // Add alert (upsert to handle duplicate key constraint)
         const { error } = await supabase
           .from("stock_alerts")
-          .insert({
+          .upsert({
             user_id: userId,
             product_id: product.id,
+            threshold_quantity: 10,
             is_active: true,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,product_id'
           });
 
         if (error) throw error;
