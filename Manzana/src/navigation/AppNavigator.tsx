@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { View, ActivityIndicator, Platform, StatusBar, StyleSheet } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useAuth } from "../hooks/useAuth";
 import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { COLORS } from "../constants/theme";
@@ -147,11 +148,25 @@ function RootNavigator() {
             name="ProfileSetup"
             component={ProfileSetupScreen}
           />
-          <RootStack.Screen name="Main" component={TabNavigator} />
+          <RootStack.Screen
+            name="Main"
+            component={TabNavigator}
+            options={{
+              gestureEnabled: false,
+              animation: 'slide_from_right',
+            }}
+          />
         </>
       ) : (
         // User is authenticated and profile is complete
-        <RootStack.Screen name="Main" component={TabNavigator} />
+        <RootStack.Screen
+          name="Main"
+          component={TabNavigator}
+          options={{
+            gestureEnabled: false,
+            animation: 'slide_from_right',
+          }}
+        />
       )}
     </RootStack.Navigator>
     </>
@@ -161,9 +176,11 @@ function RootNavigator() {
 // App Navigator
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
-      <RootNavigator />
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <RootNavigator />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 

@@ -14,12 +14,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   product,
   onPress,
   showWishlist = true,
-  showStockAlert = true,
   userId,
   refreshKey = 0,
 }) => {
-  const [hasStockAlert, setHasStockAlert] = useState(false);
-  const [isLoadingAlert, setIsLoadingAlert] = useState(false);
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [isLoadingWishlist, setIsLoadingWishlist] = useState(false);
   const primaryImage =
@@ -32,33 +29,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   useEffect(() => {
     if (userId && product.id) {
-      checkStockAlert();
       checkWishlistStatus();
     }
   }, [userId, product.id, refreshKey]);
-
-  const checkStockAlert = async () => {
-    if (!userId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("stock_alerts")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("product_id", product.id)
-        .eq("is_active", true)
-        .single();
-
-      if (error && error.code !== "PGRST116") {
-        // PGRST116 is "no rows returned" - not an error
-        console.error("Error checking stock alert:", error);
-      }
-
-      setHasStockAlert(!!data);
-    } catch (error) {
-      console.error("Error checking stock alert:", error);
-    }
-  };
 
   const checkWishlistStatus = async () => {
     if (!userId) return;
@@ -131,61 +104,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
     }
   };
 
-  const handleStockAlertPress = async (e: any) => {
-    e.stopPropagation();
-
-    if (!userId) {
-      Alert.alert("Sign In Required", "Please sign in to set stock alerts.");
-      return;
-    }
-
-    if (isLoadingAlert) return;
-
-    setIsLoadingAlert(true);
-
-    try {
-      if (hasStockAlert) {
-        // Remove alert
-        const { error } = await supabase
-          .from("stock_alerts")
-          .delete()
-          .eq("user_id", userId)
-          .eq("product_id", product.id);
-
-        if (error) throw error;
-
-        setHasStockAlert(false);
-        Alert.alert("Alert Removed", "You will no longer receive notifications for this product.");
-      } else {
-        // Add alert (upsert to handle duplicate key constraint)
-        const { error } = await supabase
-          .from("stock_alerts")
-          .upsert({
-            user_id: userId,
-            product_id: product.id,
-            threshold_quantity: 10,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'user_id,product_id'
-          });
-
-        if (error) throw error;
-
-        setHasStockAlert(true);
-        Alert.alert(
-          "Alert Set",
-          `You'll be notified when ${product.name} is back in stock.`
-        );
-      }
-    } catch (error) {
-      console.error("Error toggling stock alert:", error);
-      Alert.alert("Error", "Failed to update stock alert. Please try again.");
-    } finally {
-      setIsLoadingAlert(false);
-    }
-  };
-
   const finalPrice = hasDiscount ? product.discounted_price! : product.price;
   const accessibilityLabel = `${product.name}, ${formatCurrency(finalPrice)}${hasDiscount ? `, ${discountPercentage}% off` : ''}${product.stock_quantity === 0 ? ', out of stock' : ''}`;
 
@@ -230,8 +148,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          {showWishlist && (
+        {showWishlist && (
+          <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[
                 styles.actionButton,
@@ -253,31 +171,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 color={isInWishlist ? COLORS.white : COLORS.text}
               />
             </TouchableOpacity>
-          )}
-
-          {showStockAlert && product.stock_quantity <= 5 && (
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                hasStockAlert && styles.actionButtonActive,
-              ]}
-              onPress={handleStockAlertPress}
-              accessibilityLabel={hasStockAlert ? "Remove stock alert" : "Set stock alert"}
-              accessibilityHint={
-                hasStockAlert
-                  ? "Double tap to stop receiving stock notifications"
-                  : "Double tap to receive a notification when this item is back in stock"
-              }
-              accessibilityRole="button"
-            >
-              <Ionicons
-                name={hasStockAlert ? "notifications" : "notifications-outline"}
-                size={18}
-                color={hasStockAlert ? COLORS.white : COLORS.warning}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
 
         {/* Low Stock Indicator */}
         {product.stock_quantity <= 5 && product.stock_quantity > 0 && (
@@ -484,7 +379,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: "600",
     marginBottom: SPACING.xs,
-    minHeight: 40,
+    height: 40, // Fixed height for consistent card alignment
   },
   brandText: {
     ...TYPOGRAPHY.bodySmall,

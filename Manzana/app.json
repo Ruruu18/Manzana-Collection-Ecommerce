@@ -31,10 +31,6 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE",
-        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO"
       ],
       "googleServicesFile": "./google-services.json"
@@ -68,17 +64,15 @@
       "web"
     ],
     "extra": {
-      "eas": {
-        "projectId": "ad21d7ba-5062-448a-ac2c-19e369325727"
-      },
       "supabaseUrl": "https://fuqsweradcynpbgarwoc.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1cXN3ZXJhZGN5bnBiZ2Fyd29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTQ2MzcsImV4cCI6MjA3MzE3MDYzN30.bEUieVgxnM1xaBgMaj8AM07vSbdKP_Ti_pWKUGULXzI"
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1cXN3ZXJhZGN5bnBiZ2Fyd29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1OTQ2MzcsImV4cCI6MjA3MzE3MDYzN30.bEUieVgxnM1xaBgMaj8AM07vSbdKP_Ti_pWKUGULXzI",
+      "eas": {
+        "projectId": "e833d979-5ffc-44eb-9209-a261eaab5bc0"
+      }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/ad21d7ba-5062-448a-ac2c-19e369325727"
-    }
+    "owner": "mharlie18"
   }
 }

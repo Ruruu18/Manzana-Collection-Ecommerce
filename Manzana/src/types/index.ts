@@ -411,7 +411,6 @@ export interface ProductCardProps {
   product: Product;
   onPress: (product: Product) => void;
   showWishlist?: boolean;
-  showStockAlert?: boolean;
   userId?: string;
   refreshKey?: number;
 }

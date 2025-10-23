@@ -21,6 +21,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useCartStore } from '../../store/cartStore';
 import { useProduct, useSimilarProducts } from '../../hooks/useProductQueries';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
+import { useActivePromotions } from '../../hooks/useProductsWithPromotions';
+import { calculatePromotionPrice } from '../../utils/promotionUtils';
 import { formatCurrency, calculateDiscountPercentage, toast, getCategoryIcon } from '../../utils';
 import { ProductDetailsScreenProps, Product, HomeStackParamList, ProductVariant } from '../../types';
 import { cartService } from '../../services/cart';
@@ -39,6 +41,9 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
   const { data: product, isLoading: loading, error: productError, refetch } = useProduct(productId);
   const { data: similarProducts = [] } = useSimilarProducts(productId, product?.category_id);
   const { addRecentProduct } = useRecentlyViewed();
+
+  // Fetch active promotions to apply to product pricing
+  const { data: activePromotions = [] } = useActivePromotions(user?.user_type);
 
   // Force refetch product data when productId changes
   useEffect(() => {
@@ -366,9 +371,17 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
     );
   }
 
-  const hasDiscount = product.discounted_price && product.discounted_price < product.price;
+  // Apply active promotions to product pricing
+  const priceResult = calculatePromotionPrice(product, activePromotions);
+  const effectiveDiscountedPrice = priceResult.appliedPromotion
+    ? priceResult.finalPrice
+    : product.discounted_price;
+
+  const hasDiscount = (effectiveDiscountedPrice && effectiveDiscountedPrice < product.price) || priceResult.appliedPromotion !== null;
   const discountPercentage = hasDiscount
-    ? calculateDiscountPercentage(product.price, product.discounted_price!)
+    ? priceResult.appliedPromotion
+      ? Math.round(priceResult.savingsPercentage)
+      : calculateDiscountPercentage(product.price, effectiveDiscountedPrice!)
     : 0;
 
   // Calculate price with variant adjustments
@@ -376,7 +389,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
     (sum, variant) => sum + (variant.price_adjustment || 0),
     0
   );
-  const basePrice = hasDiscount ? product.discounted_price! : product.price;
+  const basePrice = effectiveDiscountedPrice || product.price;
   const finalPrice = basePrice + variantPriceAdjustment;
 
   return (
@@ -748,11 +761,7 @@ const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({ route, navi
                   {product.name}
                 </Text>
                 <Text style={styles.modalProductPrice}>
-                  {formatCurrency(
-                    product.discounted_price && product.discounted_price < product.price
-                      ? product.discounted_price
-                      : product.price
-                  )}
+                  {formatCurrency(effectiveDiscountedPrice || product.price)}
                 </Text>
                 <Text style={styles.modalProductStock}>
                   {product.stock_quantity} available

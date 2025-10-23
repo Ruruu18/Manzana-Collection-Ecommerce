@@ -15,6 +15,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../services/supabase";
 import { useAuth } from "../../../hooks/useAuth";
+import { useProductsWithPromotions } from "../../../hooks/useProductsWithPromotions";
 import {
   Product,
   Category,
@@ -49,6 +50,9 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const ITEMS_PER_PAGE = 20;
+
+  // Apply active promotions to products
+  const { products: productsWithPromotions } = useProductsWithPromotions(products, user?.user_type);
 
   useEffect(() => {
     loadInitialData();
@@ -306,7 +310,6 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         product={item}
         onPress={handleProductPress}
         showWishlist={true}
-        showStockAlert={true}
         userId={user?.id}
         refreshKey={refreshKey}
       />
@@ -553,7 +556,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
       {renderHeader()}
 
       <FlatList
-        data={products}
+        data={productsWithPromotions}
         renderItem={renderProduct}
         keyExtractor={(item) => item.id}
         numColumns={2}

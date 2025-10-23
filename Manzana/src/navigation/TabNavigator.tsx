@@ -221,19 +221,19 @@ const TabNavigator = () => {
   // Dynamic tab bar height based on device size
   const getTabBarHeight = () => {
     if (Platform.OS === 'ios') {
-      return isSmallDevice ? 55 + insets.bottom : 60 + insets.bottom;
+      // iOS uses safe area insets
+      return isSmallDevice ? 60 + insets.bottom : 65 + insets.bottom;
     }
-    // Android: adjust based on device size and safe area
-    const baseHeight = isSmallDevice ? 56 : isMediumDevice ? 60 : 65;
-    // Add extra padding for devices with bottom navigation bar
-    return baseHeight + Math.max(insets.bottom, 0);
+    // Android: Fixed height for larger icons
+    const baseHeight = isSmallDevice ? 85 : isMediumDevice ? 88 : 90;
+    return baseHeight;
   };
 
-  // Dynamic icon size based on device
-  const iconSize = isSmallDevice ? 22 : isMediumDevice ? 24 : 26;
+  // Dynamic icon size based on device - larger for better visibility
+  const iconSize = isSmallDevice ? 26 : isMediumDevice ? 28 : 30;
 
-  // Dynamic label font size
-  const labelFontSize = isSmallDevice ? 10 : isMediumDevice ? 11 : 12;
+  // Dynamic label font size - larger for readability
+  const labelFontSize = isSmallDevice ? 11 : isMediumDevice ? 12 : 13;
 
   const tabBarHeight = getTabBarHeight();
 
@@ -273,8 +273,8 @@ const TabNavigator = () => {
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
           height: tabBarHeight,
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : Math.max(insets.bottom, 8),
-          paddingTop: Platform.OS === 'android' ? 8 : 5,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 12, // Gap from indicator
+          paddingTop: Platform.OS === 'android' ? 10 : 5,
           paddingHorizontal: Platform.OS === 'android' ? 4 : 0,
           elevation: 8,
           shadowColor: '#000',
@@ -293,8 +293,7 @@ const TabNavigator = () => {
           marginBottom: 0,
         },
         tabBarItemStyle: {
-          height: tabBarHeight - (Platform.OS === 'ios' ? insets.bottom : 8),
-          paddingVertical: isSmallDevice ? 2 : 4,
+          paddingVertical: isSmallDevice ? 4 : 6,
           justifyContent: 'center',
           alignItems: 'center',
         },

@@ -140,7 +140,6 @@ const ProductRecommendations: React.FC<ProductRecommendationsProps> = ({
               product={item}
               onPress={() => onProductPress(item.id)}
               showWishlist={false}
-              showStockAlert={false}
             />
           </View>
         )}

@@ -133,9 +133,20 @@ const CartScreen = () => {
       return;
     }
 
+    // Check for out-of-stock items
+    const outOfStockItems = cartItems.filter(item => !item.product || item.product.stock_quantity === 0);
+    if (outOfStockItems.length > 0) {
+      Alert.alert(
+        'Items Unavailable',
+        'Some items in your cart are out of stock. Please remove them before checking out.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     // Navigate to checkout
     navigation.navigate('Checkout' as never);
-  }, [cartItems.length, navigation]);
+  }, [cartItems, navigation]);
 
   const openEditVariants = useCallback(async (item: CartItem) => {
     if (!item.product_id) return;
@@ -224,8 +235,11 @@ const CartScreen = () => {
     const isUpdating = updating === item.id;
     const itemTotal = price * item.quantity;
 
+    // Check if product is out of stock
+    const isOutOfStock = !product || product.stock_quantity === 0;
+
     return (
-      <View style={styles.cartItem}>
+      <View style={[styles.cartItem, isOutOfStock && styles.cartItemOutOfStock]}>
         {/* Product Image with Discount Badge */}
         <View style={styles.imageContainer}>
           <Image
@@ -235,9 +249,14 @@ const CartScreen = () => {
             accessibilityLabel={`${product?.name} product image`}
             accessibilityRole="image"
           />
-          {hasDiscount && (
+          {hasDiscount && !isOutOfStock && (
             <View style={styles.discountBadge}>
               <Text style={styles.discountText}>SALE</Text>
+            </View>
+          )}
+          {isOutOfStock && (
+            <View style={styles.outOfStockOverlay}>
+              <Text style={styles.outOfStockBadgeText}>Not Available</Text>
             </View>
           )}
         </View>
@@ -289,32 +308,32 @@ const CartScreen = () => {
           <View style={styles.quantityRow}>
             <View style={styles.quantityContainer}>
               <TouchableOpacity
-                style={[styles.quantityButton, isUpdating && styles.quantityButtonDisabled]}
+                style={[styles.quantityButton, (isUpdating || isOutOfStock) && styles.quantityButtonDisabled]}
                 onPress={() => updateQuantity(item.id, item.quantity - 1)}
-                disabled={isUpdating}
+                disabled={isUpdating || isOutOfStock}
                 accessibilityLabel={A11Y_LABELS.DECREASE_QUANTITY}
                 accessibilityHint={A11Y_HINTS.DECREASE_QUANTITY(item.quantity)}
                 accessibilityRole="button"
               >
-                <Ionicons name="remove" size={18} color={isUpdating ? COLORS.textSecondary : COLORS.primary} />
+                <Ionicons name="remove" size={18} color={(isUpdating || isOutOfStock) ? COLORS.textSecondary : COLORS.primary} />
               </TouchableOpacity>
 
               <Text
-                style={styles.quantityText}
+                style={[styles.quantityText, isOutOfStock && styles.quantityTextDisabled]}
                 accessibilityLabel={`Quantity: ${item.quantity}`}
               >
                 {item.quantity}
               </Text>
 
               <TouchableOpacity
-                style={[styles.quantityButton, (isUpdating || item.quantity >= (product?.stock_quantity || 0)) && styles.quantityButtonDisabled]}
+                style={[styles.quantityButton, (isUpdating || isOutOfStock || item.quantity >= (product?.stock_quantity || 0)) && styles.quantityButtonDisabled]}
                 onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                disabled={isUpdating || item.quantity >= (product?.stock_quantity || 0)}
+                disabled={isUpdating || isOutOfStock || item.quantity >= (product?.stock_quantity || 0)}
                 accessibilityLabel={A11Y_LABELS.INCREASE_QUANTITY}
                 accessibilityHint={A11Y_HINTS.INCREASE_QUANTITY(item.quantity)}
                 accessibilityRole="button"
               >
-                <Ionicons name="add" size={18} color={(isUpdating || item.quantity >= (product?.stock_quantity || 0)) ? COLORS.textSecondary : COLORS.primary} />
+                <Ionicons name="add" size={18} color={(isUpdating || isOutOfStock || item.quantity >= (product?.stock_quantity || 0)) ? COLORS.textSecondary : COLORS.primary} />
               </TouchableOpacity>
             </View>
 
@@ -322,12 +341,19 @@ const CartScreen = () => {
             <Text style={styles.itemTotal}>{formatCurrency(itemTotal)}</Text>
           </View>
 
-          {/* Stock Warning */}
-          {product?.stock_quantity && product.stock_quantity <= 5 && (
+          {/* Stock Warning/Status */}
+          {isOutOfStock ? (
+            <View style={styles.outOfStockBanner}>
+              <Ionicons name="close-circle" size={14} color={COLORS.error} />
+              <Text style={styles.outOfStockText}>
+                Out of Stock - Item unavailable
+              </Text>
+            </View>
+          ) : product?.stock_quantity && product.stock_quantity <= 5 && (
             <View style={styles.stockWarningContainer}>
               <Ionicons name="alert-circle" size={14} color={COLORS.warning} />
               <Text style={styles.stockWarning}>
-                Only {product.stock_quantity} left
+                Low Stock - Only {product.stock_quantity} left!
               </Text>
             </View>
           )}
@@ -805,6 +831,46 @@ const styles = StyleSheet.create({
   stockWarning: {
     ...TYPOGRAPHY.caption,
     color: COLORS.warning,
+  },
+  cartItemOutOfStock: {
+    opacity: 0.6,
+    backgroundColor: COLORS.surface,
+  },
+  outOfStockOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(239, 68, 68, 0.95)',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderBottomLeftRadius: BORDER_RADIUS.lg,
+    borderBottomRightRadius: BORDER_RADIUS.lg,
+  },
+  outOfStockBadgeText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.white,
+    fontWeight: 'bold',
+    fontSize: 9,
+    textAlign: 'center',
+  },
+  outOfStockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    padding: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  outOfStockText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.error,
+    fontWeight: '600',
+  },
+  quantityTextDisabled: {
+    color: COLORS.textSecondary,
+    opacity: 0.5,
   },
   removeButton: {
     position: 'absolute',

@@ -339,6 +339,14 @@ export const useAuthProvider = (): AuthContextType => {
 
       console.log("✅ Auth user created successfully, ID:", data.user.id);
 
+      // Immediately sign out to prevent auto-login
+      // Do this BEFORE creating profile to ensure no UI flash
+      if (data.session) {
+        console.log("🔄 Signing out to prevent auto-login...");
+        await supabase.auth.signOut({ scope: 'local' });
+        console.log("✅ Signed out successfully");
+      }
+
       // Step 2: Check if user profile already exists, then create if needed
       try {
         console.log("🔄 Checking if user profile already exists...");
@@ -430,18 +438,7 @@ export const useAuthProvider = (): AuthContextType => {
         };
       }
 
-      // Step 4: Sign out the user so they must manually log in
-      try {
-        if (data.session) {
-          console.log("🔄 Signing out user after registration...");
-          await supabase.auth.signOut();
-          console.log("✅ User signed out successfully");
-        }
-      } catch (signOutError: any) {
-        console.error("❌ Error signing out after registration:", signOutError.message);
-        // Don't fail registration for this
-      }
-
+      // User is already signed out from the earlier signOut call
       console.log("🎉 Registration completed successfully!");
       return {};
       
