@@ -16,7 +16,6 @@
       "bundleIdentifier": "com.manzana.collection",
       "infoPlist": {
         "UIBackgroundModes": [
-          "remote-notification",
           "remote-notification"
         ]
       }
@@ -31,7 +30,8 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WAKE_LOCK"
       ],
       "googleServicesFile": "./google-services.json"
     },
@@ -55,7 +55,8 @@
         }
       ],
       "expo-image-picker",
-      "expo-font"
+      "expo-font",
+      "expo-task-manager"
     ],
     "scheme": "manzana",
     "platforms": [

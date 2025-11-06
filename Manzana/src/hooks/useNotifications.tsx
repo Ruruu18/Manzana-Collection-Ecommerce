@@ -11,16 +11,8 @@ export const useNotifications = (): UseNotificationsReturn => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Configure notification handling
+  // Configure notification handling (handler already set in notifications.ts service)
   useEffect(() => {
-    ExpoNotifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
-
     if (user) {
       setupPushNotifications();
       fetchNotifications();
@@ -52,11 +44,17 @@ export const useNotifications = (): UseNotificationsReturn => {
         projectId: 'ad21d7ba-5062-448a-ac2c-19e369325727',
       });
 
-      // Save token to user profile
+      // Save token to user_devices table (not users table - handled by notificationService)
       await supabase
-        .from("users")
-        .update({ push_token: token.data })
-        .eq("id", user.id);
+        .from("user_devices")
+        .upsert({
+          user_id: user.id,
+          device_token: token.data,
+          platform: Platform.OS,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,device_token',
+        });
 
       // Set notification categories for iOS
       if (Platform.OS === "ios") {

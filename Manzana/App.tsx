@@ -7,6 +7,7 @@ import AppNavigator from "./src/navigation/AppNavigator";
 import { AuthProvider } from "./src/hooks/useAuth";
 import { runAutoSetupCheck } from "./src/utils/autoSetupCheck";
 import ErrorBoundary from "./src/components/ErrorBoundary";
+import { registerBackgroundNotificationTask } from "./src/services/backgroundNotifications";
 
 // Create a client with optimized cache settings
 const queryClient = new QueryClient({
@@ -28,6 +29,11 @@ LogBox.ignoreLogs([
 
 export default function App() {
   useEffect(() => {
+    // Register background notification task for when app is closed
+    registerBackgroundNotificationTask().catch(error => {
+      console.error("❌ Failed to register background notification task:", error);
+    });
+
     // Setup check disabled - registration is working properly
     // if (__DEV__) {
     //   runAutoSetupCheck().catch(error => {

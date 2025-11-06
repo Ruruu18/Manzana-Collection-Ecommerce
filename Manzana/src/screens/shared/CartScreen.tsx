@@ -23,7 +23,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { useCartStore } from '../../store/cartStore';
 import { formatCurrency, toast } from '../../utils';
 import { fetchActivePromotions, getProductFinalPrice } from '../../utils/cartPromotionUtils';
-import { Promotion, Cart as CartItem } from '../../types';
+import { Promotion } from '../../types';
+import { CartItem } from '../../services/cart';
 import { supabase } from '../../services/supabase';
 import { ListSkeleton } from '../../components/Skeleton';
 import { EmptyCart } from '../../components/EmptyState';
@@ -122,7 +123,7 @@ const CartScreen = () => {
     return cartItems.reduce((total, item) => {
       if (!item.product) return total;
       const { finalPrice } = getProductFinalPrice(item.product, activePromotions);
-      const variantAdjustment = item.product_variants?.price_adjustment || 0;
+      const variantAdjustment = item.product_variants?.[0]?.price_adjustment || 0;
       return total + (finalPrice + variantAdjustment) * item.quantity;
     }, 0);
   }, [cartItems, activePromotions]);

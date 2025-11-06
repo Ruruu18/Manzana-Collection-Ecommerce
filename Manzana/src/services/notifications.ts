@@ -14,6 +14,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -128,11 +130,11 @@ class NotificationService {
         .from('user_devices')
         .upsert({
           user_id: userId,
-          push_token: token,
+          device_token: token,
           platform: Platform.OS,
           updated_at: new Date().toISOString(),
         }, {
-          onConflict: 'user_id,push_token',
+          onConflict: 'user_id,device_token',
         })
         .select();
 
@@ -159,7 +161,7 @@ class NotificationService {
         .from('user_devices')
         .delete()
         .eq('user_id', userId)
-        .eq('push_token', this.expoPushToken);
+        .eq('device_token', this.expoPushToken);
 
       if (error) {
         console.error('Error unregistering device token:', error);
@@ -186,11 +188,11 @@ class NotificationService {
         content: {
           title,
           body,
-          data: data || {},
+          data: (data || {}) as Record<string, unknown>,
           sound: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,
         },
-        trigger: triggerSeconds > 0 ? { seconds: triggerSeconds } : null,
+        trigger: triggerSeconds > 0 ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: triggerSeconds } : null,
       });
 
       return identifier;

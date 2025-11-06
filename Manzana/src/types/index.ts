@@ -135,7 +135,7 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: "promotion" | "stock_alert" | "order" | "system" | "product";
+  type: "promotion" | "stock_alert" | "order" | "order_update" | "system" | "product";
   data?: any; // Additional data payload
   image_url?: string;
   action_url?: string; // Deep link or navigation path
