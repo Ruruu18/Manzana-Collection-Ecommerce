@@ -87,9 +87,22 @@ export default function Orders() {
     try {
       console.log(`📋 Updating order ${orderId} status to ${newStatus}`);
 
+      // Prepare update data with status
+      const updateData: any = {
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      // Set timestamps based on status
+      if (newStatus === 'shipped') {
+        updateData.shipped_at = new Date().toISOString();
+      } else if (newStatus === 'delivered') {
+        updateData.delivered_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', orderId);
 
       if (error) {
