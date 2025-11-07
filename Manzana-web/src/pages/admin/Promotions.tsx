@@ -402,9 +402,10 @@ export default function Promotions() {
         <div className="search">
           <input
             type="text"
-            placeholder="Search promotions by title..."
+            placeholder="🔍 Search promotions by title..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ color: "#1f2937" }}
           />
         </div>
       </div>
