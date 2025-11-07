@@ -580,6 +580,7 @@ export default function Products() {
             border: "1px solid #e5e7eb",
             fontSize: "14px",
             background: "white",
+            color: "#1f2937",
           }}
         />
       </div>
