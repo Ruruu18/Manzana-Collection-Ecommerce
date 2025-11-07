@@ -18,7 +18,6 @@ export default defineConfig({
           // Split vendor code into separate chunks
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'supabase': ['@supabase/supabase-js'],
-          'recharts': ['recharts'],
         },
       },
     },
