@@ -148,6 +148,64 @@ export default function Orders() {
     return statusMap[status as keyof typeof statusMap] || "info";
   };
 
+  const exportOrders = () => {
+    try {
+      // Filter orders based on current filters
+      const ordersToExport = filteredOrders;
+
+      // Prepare CSV data
+      const csvRows = [];
+      // Header
+      csvRows.push([
+        'Order Number',
+        'Customer Name',
+        'Customer Email',
+        'Total Amount',
+        'Status',
+        'Date',
+        'Items',
+      ].join(','));
+
+      // Data rows
+      ordersToExport.forEach(order => {
+        const customerName = order.users?.full_name || 'N/A';
+        const customerEmail = order.users?.email || 'N/A';
+        const items = order.order_items?.map(item =>
+          `${item.products.name} (x${item.quantity})`
+        ).join('; ') || 'N/A';
+
+        csvRows.push([
+          order.order_number,
+          `"${customerName}"`, // Quote to handle commas
+          customerEmail,
+          order.total_amount,
+          order.status,
+          new Date(order.created_at).toLocaleDateString(),
+          `"${items}"`, // Quote to handle commas/semicolons
+        ].join(','));
+      });
+
+      // Create CSV blob
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+      // Download file
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `orders_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      alert(`Successfully exported ${ordersToExport.length} orders`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export orders');
+    }
+  };
+
   const getStatusLabel = (status: string) => {
     const labelMap = {
       pending: "Pending",
@@ -193,7 +251,7 @@ export default function Orders() {
           <button className="btn btn-secondary" onClick={loadOrders}>
             🔄 Refresh
           </button>
-          <button className="btn btn-primary">
+          <button className="btn btn-primary" onClick={exportOrders}>
             📊 Export Orders
           </button>
         </div>

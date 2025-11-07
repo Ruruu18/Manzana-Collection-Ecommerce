@@ -644,10 +644,10 @@ export default function Promotions() {
                   <input
                     type="text"
                     className="input"
-                    placeholder="Search products..."
+                    placeholder="🔍 Search products..."
                     value={productSearchTerm}
                     onChange={(e) => setProductSearchTerm(e.target.value)}
-                    style={{ marginBottom: "var(--spacing-sm)" }}
+                    style={{ marginBottom: "var(--spacing-sm)", color: "#1f2937" }}
                   />
 
                   <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--spacing-sm)" }}>
