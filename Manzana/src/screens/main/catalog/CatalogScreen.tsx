@@ -140,11 +140,12 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         query = query.eq("is_featured", true);
       }
 
-      // Apply search query (search in name, category, and description)
+      // Apply search query (search in name and description)
       if (searchQuery.trim()) {
-        // Search in product name OR category name OR description
+        // Search in product name OR description
+        // Note: category.name requires a separate join query, so excluded here
         query = query.or(
-          `name.ilike.%${searchQuery}%,category.name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
+          `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
         );
       }
 
