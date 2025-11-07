@@ -140,14 +140,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
         query = query.eq("is_featured", true);
       }
 
-      // Apply search query (search in name and description)
-      if (searchQuery.trim()) {
-        // Search in product name OR description
-        // Note: category.name requires a separate join query, so excluded here
-        query = query.or(
-          `name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
-        );
-      }
+      // Note: Search is now done client-side after fetching to include category names
 
       // Apply filters
       if (filters.category) {
@@ -201,7 +194,7 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
       if (error) throw error;
 
       // Sort images to put primary first
-      const productsWithSortedImages =
+      let productsWithSortedImages =
         data?.map((product) => ({
           ...product,
           images:
@@ -210,6 +203,17 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
                 (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0),
             ) || [],
         })) || [];
+
+      // Apply client-side search filtering (supports category name search)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        productsWithSortedImages = productsWithSortedImages.filter((product: any) =>
+          product.name.toLowerCase().includes(query) ||
+          product.description?.toLowerCase().includes(query) ||
+          product.brand?.toLowerCase().includes(query) ||
+          product.category?.name?.toLowerCase().includes(query)
+        );
+      }
 
       if (reset) {
         setProducts(productsWithSortedImages);
