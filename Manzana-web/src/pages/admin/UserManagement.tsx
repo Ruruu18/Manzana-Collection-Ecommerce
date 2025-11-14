@@ -31,7 +31,7 @@ export default function UserManagement() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  // const [showCreateModal, setShowCreateModal] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   // Edit form state
@@ -44,7 +44,9 @@ export default function UserManagement() {
   const [editDepartment, setEditDepartment] = useState("");
   const [editUserType, setEditUserType] = useState<string>("");
 
-  // Create customer form state
+  // Temporarily disabled Add Customer feature
+  /*
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createFullName, setCreateFullName] = useState("");
@@ -52,6 +54,7 @@ export default function UserManagement() {
   const [createUserType, setCreateUserType] = useState<string>("consumer");
   const [createCity, setCreateCity] = useState("");
   const [createState, setCreateState] = useState("");
+  */
 
   // Role-based access control - Admin only
   useEffect(() => {
@@ -250,6 +253,7 @@ export default function UserManagement() {
     }
   };
 
+  /*
   const openCreateModal = () => {
     // Reset form
     setCreateEmail("");
@@ -350,6 +354,7 @@ export default function UserManagement() {
       setUpdating(false);
     }
   };
+  */
 
   const getUserTypeBadge = (userType: string) => {
     const typeMap = {
@@ -410,9 +415,9 @@ export default function UserManagement() {
           <button className="btn btn-secondary" onClick={loadUsers}>
             🔄 Refresh
           </button>
-          <button className="btn btn-success" onClick={openCreateModal}>
+          {/* <button className="btn btn-success" onClick={openCreateModal}>
             👤 Add Customer
-          </button>
+          </button> */}
           <button className="btn btn-primary" onClick={() => navigate('/admin/staff')}>
             ➕ Add Staff
           </button>
@@ -743,7 +748,8 @@ export default function UserManagement() {
         </div>
       )}
 
-      {/* Create Customer Modal */}
+      {/* Create Customer Modal temporarily disabled */}
+      {/*
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -878,6 +884,7 @@ export default function UserManagement() {
           </div>
         </div>
       )}
+      */}
 
       {/* Change Role Modal */}
       {showRoleModal && selectedUser && (
