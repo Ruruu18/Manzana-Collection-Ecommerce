@@ -133,7 +133,8 @@ const CatalogScreen: React.FC<CatalogScreenProps> = ({ navigation, route }) => {
           images:product_images(id, url, alt_text, is_primary)
         `,
         )
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .is("deleted_at", null);
 
       // Apply route-based filters
       if ((route?.params as any)?.featured) {

@@ -36,7 +36,9 @@ interface CategoryPerformance {
 
 export default function Reports() {
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'custom' | 'all'>('30d');
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [salesData, setSalesData] = useState<SalesData>({
     daily: [],
     weekly: [],
@@ -58,19 +60,24 @@ export default function Reports() {
 
   useEffect(() => {
     loadReportsData();
-  }, [dateRange]);
+  }, [dateRange, customStartDate, customEndDate]);
 
   const getDateFilter = () => {
     const now = new Date();
     switch (dateRange) {
       case '7d':
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        return { start: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(), end: null };
       case '30d':
-        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        return { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(), end: null };
       case '90d':
-        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        return { start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(), end: null };
+      case 'custom':
+        return {
+          start: customStartDate ? new Date(customStartDate).toISOString() : null,
+          end: customEndDate ? new Date(customEndDate + 'T23:59:59').toISOString() : null
+        };
       default:
-        return null;
+        return { start: null, end: null };
     }
   };
 
@@ -101,8 +108,11 @@ export default function Reports() {
         .from('orders')
         .select('total_amount, created_at');
 
-      if (dateFilter) {
-        query = query.gte('created_at', dateFilter);
+      if (dateFilter.start) {
+        query = query.gte('created_at', dateFilter.start);
+      }
+      if (dateFilter.end) {
+        query = query.lte('created_at', dateFilter.end);
       }
 
       const { data, error } = await query;
@@ -129,8 +139,11 @@ export default function Reports() {
         .select('total_amount, created_at')
         .order('created_at', { ascending: true });
 
-      if (dateFilter) {
-        query = query.gte('created_at', dateFilter);
+      if (dateFilter.start) {
+        query = query.gte('created_at', dateFilter.start);
+      }
+      if (dateFilter.end) {
+        query = query.lte('created_at', dateFilter.end);
       }
 
       const { data, error } = await query;
@@ -194,8 +207,11 @@ export default function Reports() {
           products (name)
         `);
 
-      if (dateFilter) {
-        query = query.gte('orders.created_at', dateFilter);
+      if (dateFilter.start) {
+        query = query.gte('orders.created_at', dateFilter.start);
+      }
+      if (dateFilter.end) {
+        query = query.lte('orders.created_at', dateFilter.end);
       }
 
       const { data, error } = await query;
@@ -434,7 +450,7 @@ export default function Reports() {
           <h1>📊 Reports & Analytics</h1>
           <p>Comprehensive business intelligence and performance metrics</p>
         </div>
-        <div className="reports-actions">
+        <div className="reports-actions" style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           <select
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value as any)}
@@ -443,8 +459,33 @@ export default function Reports() {
             <option value="7d">Last 7 Days</option>
             <option value="30d">Last 30 Days</option>
             <option value="90d">Last 90 Days</option>
+            <option value="custom">Custom Date Range</option>
             <option value="all">All Time</option>
           </select>
+          {dateRange === 'custom' && (
+            <>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <label style={{ fontSize: "14px", color: "#6b7280", whiteSpace: "nowrap" }}>From:</label>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="date-range-select"
+                  style={{ width: "150px" }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <label style={{ fontSize: "14px", color: "#6b7280", whiteSpace: "nowrap" }}>To:</label>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="date-range-select"
+                  style={{ width: "150px" }}
+                />
+              </div>
+            </>
+          )}
           <button
             className="btn btn-primary"
             onClick={() => window.print()}

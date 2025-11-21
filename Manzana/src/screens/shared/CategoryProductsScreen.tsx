@@ -109,6 +109,7 @@ const CategoryProductsScreen: React.FC<CategoryProductsScreenProps> = ({
         )
         .in("category_id", categoryIds)
         .eq("is_active", true)
+        .is("deleted_at", null)
         .gt("stock_quantity", 0);
 
       // Apply sorting

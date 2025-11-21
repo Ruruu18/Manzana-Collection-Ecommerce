@@ -31,6 +31,8 @@ export default function Orders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
     loadOrders();
@@ -225,7 +227,12 @@ export default function Orders() {
       order.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.order_number?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchesStatus && matchesSearch;
+    // Date range filtering
+    const orderDate = new Date(order.created_at);
+    const matchesStartDate = !startDate || orderDate >= new Date(startDate);
+    const matchesEndDate = !endDate || orderDate <= new Date(endDate + 'T23:59:59');
+
+    return matchesStatus && matchesSearch && matchesStartDate && matchesEndDate;
   });
 
   if (loading) {
@@ -258,8 +265,8 @@ export default function Orders() {
       </div>
 
       {/* Filters */}
-      <div className="filters-bar">
-        <div className="search-box">
+      <div className="filters-bar" style={{ flexWrap: "wrap", gap: "12px" }}>
+        <div className="search-box" style={{ flex: "1 1 300px" }}>
           <span className="search-icon">🔍</span>
           <input
             type="text"
@@ -268,11 +275,12 @@ export default function Orders() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="filter-select"
+          style={{ flex: "0 1 180px" }}
         >
           <option value="all">All Statuses</option>
           <option value="pending">Pending</option>
@@ -282,6 +290,43 @@ export default function Orders() {
           <option value="delivered">Picked Up</option>
           <option value="cancelled">Cancelled</option>
         </select>
+
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flex: "0 1 auto" }}>
+          <label style={{ fontSize: "14px", color: "var(--muted)", whiteSpace: "nowrap" }}>From:</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="filter-select"
+            style={{ flex: "0 1 150px" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flex: "0 1 auto" }}>
+          <label style={{ fontSize: "14px", color: "var(--muted)", whiteSpace: "nowrap" }}>To:</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="filter-select"
+            style={{ flex: "0 1 150px" }}
+          />
+        </div>
+
+        {(startDate || endDate || searchTerm || statusFilter !== "all") && (
+          <button
+            onClick={() => {
+              setSearchTerm("");
+              setStatusFilter("all");
+              setStartDate("");
+              setEndDate("");
+            }}
+            className="btn btn-secondary"
+            style={{ padding: "8px 16px", fontSize: "14px", whiteSpace: "nowrap" }}
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* Orders Table */}

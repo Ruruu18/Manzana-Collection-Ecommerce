@@ -37,6 +37,7 @@ export const useProduct = (productId: string | undefined) => {
           product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('id', productId)
+        .is('deleted_at', null)
         .single();
 
       if (error) throw error;
@@ -79,6 +80,7 @@ export const useFeaturedProducts = () => {
         `)
         .eq('is_active', true)
         .eq('is_featured', true)
+        .is('deleted_at', null)
         .gt('stock_quantity', 0)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -108,6 +110,7 @@ export const useNewProducts = () => {
           variants:product_variants(id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
         .eq('is_active', true)
+        .is('deleted_at', null)
         .gt('stock_quantity', 0)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -140,6 +143,7 @@ export const useSimilarProducts = (productId: string | undefined, categoryId: st
         `)
         .eq('category_id', categoryId)
         .eq('is_active', true)
+        .is('deleted_at', null)
         .neq('id', productId)
         .limit(10);
 
@@ -186,6 +190,7 @@ export const useProductsByCategory = (categoryId: string | undefined) => {
         `)
         .eq('category_id', categoryId)
         .eq('is_active', true)
+        .is('deleted_at', null)
         .gt('stock_quantity', 0)
         .order('created_at', { ascending: false });
 

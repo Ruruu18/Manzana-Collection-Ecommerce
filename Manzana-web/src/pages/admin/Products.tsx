@@ -92,6 +92,7 @@ export default function Products() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -139,6 +140,7 @@ export default function Products() {
           product_images (id, url, alt_text, is_primary, sort_order),
           product_variants (id, product_id, name, type, value, stock_quantity, price_adjustment, sku_suffix, is_active)
         `)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       clearTimeout(timeoutId);
@@ -187,13 +189,24 @@ export default function Products() {
   }, []);
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm) return items;
-    return items.filter(
-      (item) =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()),
-    );
-  }, [items, searchTerm]);
+    let filtered = items;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (item) =>
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.sku.toLowerCase().includes(searchTerm.toLowerCase()),
+      );
+    }
+
+    // Apply category filter
+    if (categoryFilter) {
+      filtered = filtered.filter((item) => item.category_id === categoryFilter);
+    }
+
+    return filtered;
+  }, [items, searchTerm, categoryFilter]);
 
   const canCreate = useMemo(
     () => !!name && !!price && quantity >= 0 && !!categoryId && (imageFile !== null || editingProduct !== null),
@@ -473,13 +486,18 @@ export default function Products() {
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this product? This action cannot be undone.")) return;
+    if (!confirm("Are you sure you want to delete this product? It will be moved to trash.")) return;
 
-    const { error } = await supabase.from("products").delete().eq("id", id);
+    // Soft delete: Set deleted_at timestamp instead of permanently deleting
+    const { error } = await supabase
+      .from("products")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", id);
+
     if (error) {
       setError(`Failed to delete product: ${error.message}`);
     } else {
-      setSuccessMessage("Product deleted successfully!");
+      setSuccessMessage("Product moved to trash successfully!");
       setTimeout(() => setSuccessMessage(null), 3000);
     }
     await load();
@@ -566,15 +584,15 @@ export default function Products() {
         </div>
       )}
 
-      {/* Search Bar */}
-      <div style={{ marginBottom: "24px" }}>
+      {/* Search and Filter Bar */}
+      <div style={{ marginBottom: "24px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
         <input
           type="text"
           placeholder="🔍 Search products by name or SKU..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
-            width: "100%",
+            flex: "1 1 300px",
             padding: "12px 16px",
             borderRadius: "10px",
             border: "1px solid #e5e7eb",
@@ -583,6 +601,47 @@ export default function Products() {
             color: "#1f2937",
           }}
         />
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          style={{
+            flex: "0 1 200px",
+            padding: "12px 16px",
+            borderRadius: "10px",
+            border: "1px solid #e5e7eb",
+            fontSize: "14px",
+            background: "white",
+            color: "#1f2937",
+            cursor: "pointer",
+          }}
+        >
+          <option value="">All Categories</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+        {(searchTerm || categoryFilter) && (
+          <button
+            onClick={() => {
+              setSearchTerm("");
+              setCategoryFilter("");
+            }}
+            style={{
+              padding: "12px 20px",
+              borderRadius: "10px",
+              border: "1px solid #e5e7eb",
+              background: "#f9fafb",
+              color: "#6b7280",
+              fontSize: "14px",
+              cursor: "pointer",
+              fontWeight: "500",
+            }}
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {/* Add/Edit Product Modal */}

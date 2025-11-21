@@ -112,7 +112,7 @@ Admin       → Full Access (All CRUD Operations)
                      │              │ (users table)    │
                      │              └────────┬─────────┘
                      │                       │
-                     └───────────────────────┘
+                     └───────────────────────┘so
                                  │
                                  ▼
                     ┌────────────────────────┐
@@ -1252,26 +1252,31 @@ ADMIN OPERATIONS FLOW:
 ## 🎯 KEY SYSTEM FLOWS SUMMARY
 
 ### 1. **User Journey**
+
 ```
 Register → Login → Browse → Add to Cart → Checkout → Track Order
 ```
 
 ### 2. **Product Lifecycle**
+
 ```
 Admin Creates → Published → Appears in App → User Purchases → Stock Updated
 ```
 
 ### 3. **Promotion Lifecycle**
+
 ```
 Admin Creates → Upcoming (Countdown) → Active (Live) → Products Discounted → Expired
 ```
 
 ### 4. **Order Lifecycle**
+
 ```
 Placed → Pending → Processing → Shipped → Delivered
 ```
 
 ### 5. **Notification Lifecycle**
+
 ```
 Created → Delivered → Read → Deleted (Permanently)
 ```

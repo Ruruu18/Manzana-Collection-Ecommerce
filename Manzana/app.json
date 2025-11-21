@@ -71,9 +71,7 @@
         "projectId": "e833d979-5ffc-44eb-9209-a261eaab5bc0"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "owner": "mharlie18"
   }
 }

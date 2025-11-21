@@ -144,7 +144,8 @@ const SearchScreen: React.FC<SearchScreenProps> = ({ navigation, route }) => {
           category:categories(name)
         `
         )
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .is("deleted_at", null);
 
       if (selectedCategory) {
         query = query.eq("category_id", selectedCategory);

@@ -390,7 +390,14 @@ export default function Promotions() {
         <div className="dashboard-actions">
           <button
             className="btn btn-primary"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              // Set default dates: start = now, end = 7 days from now
+              const now = new Date();
+              const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+              setStart(now.toISOString().slice(0, 16));
+              setEnd(endDate.toISOString().slice(0, 16));
+              setIsModalOpen(true);
+            }}
           >
             🏷️ Create Promotion
           </button>
@@ -593,6 +600,7 @@ export default function Promotions() {
                   type="datetime-local"
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
+                  onFocus={(e) => e.target.showPicker()}
                   required
                 />
               </div>
@@ -603,6 +611,7 @@ export default function Promotions() {
                   type="datetime-local"
                   value={end}
                   onChange={(e) => setEnd(e.target.value)}
+                  onFocus={(e) => e.target.showPicker()}
                   required
                 />
               </div>
@@ -927,7 +936,14 @@ export default function Promotions() {
                 <button
                   className="btn btn-primary"
                   style={{ marginTop: "var(--spacing)" }}
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => {
+                    // Set default dates: start = now, end = 7 days from now
+                    const now = new Date();
+                    const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                    setStart(now.toISOString().slice(0, 16));
+                    setEnd(endDate.toISOString().slice(0, 16));
+                    setIsModalOpen(true);
+                  }}
                 >
                   🏷️ Create First Promotion
                 </button>
